@@ -1,2 +1,5 @@
 h1 { font-size: 2.5em; background-color: orange; text-align: center; }
 img {max-width: 100%; height: auto;}
+table, th, td {
+  border: 10px solid gainsboro;
+}
