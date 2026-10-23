@@ -52,7 +52,10 @@
     return JSON.parse(new TextDecoder().decode(pt));
   }
 
+  // Benutzername + Passwort ergeben zusammen den Schlüssel für den Orga-Bereich.
+  function loginKey(user, pw) { return String(user).trim().toLowerCase() + ':' + pw; }
+
   function w3wUrl(words) { return 'https://what3words.com/' + encodeURIComponent(words); }
 
-  g.Rallye = { normText, normNum, normAnswer, hashAnswer, encrypt, decrypt, toB64, w3wUrl };
+  g.Rallye = { normText, normNum, normAnswer, hashAnswer, encrypt, decrypt, toB64, fromB64, loginKey, w3wUrl };
 })(typeof window !== 'undefined' ? window : globalThis);
