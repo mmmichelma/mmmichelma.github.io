@@ -222,3 +222,46 @@ table.results td:last-child { text-align: right; font-variant-numeric: tabular-n
   .card { break-inside: avoid; box-shadow: none; }
   .photos { grid-template-columns: repeat(3, 1fr); }
 }
+.hero-img { width: 100%; max-height: 260px; object-fit: cover; margin-bottom: 14px; }
+.station-img { width: 100%; max-height: 320px; object-fit: cover; margin-bottom: 12px; }
+
+/* Wertung */
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs [aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 8px; margin: 8px 0 20px; }
+.podest { flex: 1; max-width: 200px; text-align: center; min-width: 0; }
+.podest .medal { font-size: 2rem; line-height: 1; }
+.podest .car { font-weight: 800; overflow-wrap: anywhere; margin: 4px 0 0; }
+.podest .block { margin-top: 8px; border-radius: 12px 12px 4px 4px; background: var(--accent-soft); border: 1px solid var(--line); font-size: 1.6rem; font-weight: 900; display: grid; place-items: center; }
+.podest.p1 .block { height: 110px; }
+.podest.p2 .block { height: 80px; }
+.podest.p3 .block { height: 56px; }
+
+.card:has(.chart) { position: relative; }
+.chart { --bar: #d9730d; position: relative; padding-top: 22px; }
+.chart .axis { position: absolute; top: 0; left: 0; right: 40px; height: 18px; pointer-events: none; }
+.chart .axis span:first-child { transform: none; }
+.chart .axis span { position: absolute; top: 0; transform: translateX(-50%); font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar-row { display: grid; grid-template-columns: 1fr 32px; grid-template-areas: 'label label' 'track val'; align-items: center; column-gap: 8px; row-gap: 2px; padding: 4px 0; cursor: default; border-radius: 8px; position: relative; }
+.bar-row:hover, .bar-row:focus { background: color-mix(in srgb, var(--accent) 8%, transparent); outline: none; }
+.bar-label { grid-area: label; font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
+.bar-track { grid-area: track; }
+.bar-val { grid-area: val; }
+.bar-track { height: 18px; position: relative; background: linear-gradient(to right, var(--line) 1px, transparent 1px) 0 0 / 25% 100% repeat-x; border-right: 1px solid var(--line); }
+.bar { height: 100%; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; transition: width .6s ease-out; }
+.bar-val { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.tip { position: absolute; left: 16px; right: 16px; z-index: 5; background: var(--text); color: var(--bg); border-radius: 10px; padding: 8px 12px; font-size: .9rem; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+
+table.rank th, table.matrix th { text-align: left; font-size: .8rem; color: var(--muted); font-weight: 600; padding: 6px 4px; }
+table.rank td:nth-child(3), table.rank td:nth-child(4), table.rank td:nth-child(5) { font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.rank td:last-child { text-align: left; }
+table.matrix { border-collapse: collapse; font-size: .85rem; min-width: 100%; }
+table.matrix th:not(:first-child) { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; text-align: left; padding: 4px 2px; }
+table.matrix td { padding: 6px 4px; border-top: 1px solid var(--line); white-space: nowrap; text-align: center; font-variant-numeric: tabular-nums; }
+table.matrix td:first-child { text-align: left; white-space: normal; min-width: 130px; }
+table.matrix td.full { background: color-mix(in srgb, var(--good) 14%, transparent); }
+table.matrix td.zero { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+table.matrix td.na { color: var(--muted); }
+details.answers { border-top: 1px solid var(--line); padding: 8px 0; }
+details.answers summary { cursor: pointer; }
+details.answers table { margin: 8px 0; }

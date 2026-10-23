@@ -3,7 +3,7 @@
 /* Spieler-Quiz: Fragen aus fragen.js, Lösungen nur als Prüfsumme. */
 
 const R = window.RALLYE;
-const { hashAnswer, w3wUrl } = window.Rallye;
+const { hashAnswer, w3wUrl, toB64 } = window.Rallye;
 const $ = (sel, el = document) => el.querySelector(sel);
 const app = $('#app');
 const KEY = 'gaudi:' + R.salt;
@@ -66,6 +66,7 @@ $('#brand').textContent = R.title;
 function intro() {
   app.innerHTML = `
     <section class="hero">
+      ${R.heroImg ? `<img src="${esc(R.heroImg)}" alt="" class="hero-img">` : ''}
       <p class="muted" style="margin:0">${esc(R.subtitle)}</p>
       <h1>${esc(R.title)}</h1>
     </section>
@@ -73,8 +74,8 @@ function intro() {
       <p class="pre">${esc(R.intro)}</p>
       <p class="small muted">${R.stations.length} Stationen · ${maxPoints} Punkte${openCount ? ` · ${openCount} Schätzfrage${openCount > 1 ? 'n' : ''} wertet die Spielleitung` : ''}</p>
       <form id="start" class="stack">
-        <label>Euer Teamname<input id="team" required maxlength="40" placeholder="z. B. Die Pranger-Profis"></label>
-        <button class="primary big">🏁 Los geht's – die Uhr läuft!</button>
+        <label>Name eures Autos<input id="team" required maxlength="30" autocomplete="off" placeholder="z. B. Roter Blitz"></label>
+        <button class="primary big">🚗 Anmelden & losfahren – die Uhr läuft!</button>
       </form>
     </div>
     <a class="orga-link" href="orga.html">🔐 Spielleitung</a>`;
@@ -141,6 +142,7 @@ function stationHtml(s, i) {
         <span class="chev">›</span></summary>
       <div class="body">
         ${s.w3w.length ? `<div class="w3w">${s.w3w.map(w => `<a class="btn" href="${esc(w3wUrl(w.words))}" target="_blank" rel="noopener">📍 ${esc(w.label)} <b>///</b>${esc(w.words)}</a>`).join('')}</div>` : ''}
+        ${s.img ? `<img src="${esc(s.img)}" alt="" class="station-img" loading="lazy">` : ''}
         ${s.text ? `<p class="pre">${esc(s.text)}</p>` : ''}
         <form data-station="${esc(s.id)}">${q}
           ${ss.checked ? '' : '<button class="primary big">Antworten prüfen</button>'}
@@ -187,7 +189,7 @@ app.addEventListener('submit', async e => {
 /* ---------- Ergebnis ---------- */
 
 function resultText() {
-  const lines = [`🏁 ${R.title} – Team „${state.team}“`,
+  const lines = [`🏁 ${R.title} – Auto „${state.team}“`,
     `⭐ ${points()} von ${maxPoints} Punkten${openCount ? ` (+ ${openCount} offene Frage${openCount > 1 ? 'n' : ''})` : ''} · ⏱ ${fmtTime(state.end - state.start)}`, ''];
   R.stations.forEach((s, i) => {
     const ss = state.st[s.id];
@@ -201,26 +203,37 @@ function resultText() {
   return lines.join('\n');
 }
 
+// Kompakter Ergebnis-Code für die Rangliste der Spielleitung (dort wird neu gewertet)
+function resultLink() {
+  const a = {};
+  for (const s of R.stations) if (state.st[s.id]) a[s.id] = state.st[s.id].vals;
+  const payload = { v: 1, t: state.team, s: state.start, e: state.end, c: R.stations.filter(s => state.st[s.id]?.checked).map(s => s.id), a };
+  const code = toB64(new TextEncoder().encode(JSON.stringify(payload))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return new URL('orga.html#e=' + code, location.href).href;
+}
+
 function finish(fresh) {
   clearInterval(tick);
   if (fresh) confetti();
   const text = resultText();
+  const msg = `🏁 ${R.title} – Auto „${state.team}“\n⭐ ${points()} von ${maxPoints} Punkten · ⏱ ${fmtTime(state.end - state.start)}\n\n👉 Für die Wertung (Spielleitung antippen):\n${resultLink()}`;
   app.innerHTML = `
     <div class="card center pop">
       <div style="font-size:3rem">🏆</div>
       <h1>Geschafft, ${esc(state.team)}!</h1>
+      <p class="small muted">Wichtig: Schickt euer Ergebnis an die Spielleitung, sonst landet ihr nicht in der Rangliste.</p>
       <p class="score">${points()}</p>
       <p class="muted">von ${maxPoints} Punkten · Zeit ${fmtTime(state.end - state.start)}${openCount ? `<br>${openCount} Schätzfrage${openCount > 1 ? 'n' : ''} wertet noch die Spielleitung` : ''}</p>
       <div class="row" style="justify-content:center">
-        <a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">💬 Per WhatsApp senden</a>
+        <a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Ergebnis an Spielleitung senden</a>
         <button id="copy">📋 Kopieren</button>
       </div>
     </div>
     <div class="card"><pre class="pre small" style="margin:0;font-family:inherit">${esc(text)}</pre></div>
     <button id="reset" class="ghost danger small">Spielstand löschen</button>`;
   $('#copy').onclick = async () => {
-    try { await navigator.clipboard.writeText(text); toast('Kopiert – ab in die Gruppe!'); }
-    catch { prompt('Ergebnis kopieren:', text); }
+    try { await navigator.clipboard.writeText(msg); toast('Kopiert – ab in die Gruppe!'); }
+    catch { prompt('Ergebnis kopieren:', msg); }
   };
   $('#reset').onclick = () => {
     if (!confirm('Wirklich alles löschen und neu anfangen?')) return;

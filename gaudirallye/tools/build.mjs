@@ -1,7 +1,7 @@
 // Erzeugt aus den Quelldaten die Spieler-Daten (ohne Lösungen) und den
 // verschlüsselten Orga-Bereich (mit Lösungen und Fotos).
 //
-//   node tools/build.mjs <rallye.json> <fotos-ordner> <passwort>
+//   node tools/build.mjs <rallye.json> <fotos-ordner> <benutzername> <passwort>
 //
 // rallye.json kann auch die Datei sein, die der Orga-Bereich unter
 // „Quelldaten herunterladen“ speichert – dort stecken die Fotos schon drin.
@@ -12,11 +12,11 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const here = path.dirname(new URL(import.meta.url).pathname);
 require(path.join(here, '..', 'common.js'));
-const { hashAnswer, encrypt, toB64 } = globalThis.Rallye;
+const { hashAnswer, encrypt, toB64, loginKey } = globalThis.Rallye;
 
-const [src, fotoDir, password] = process.argv.slice(2);
-if (!src || !password) {
-  console.error('Aufruf: node tools/build.mjs <rallye.json> <fotos-ordner> <passwort>');
+const [src, fotoDir, user, pw] = process.argv.slice(2);
+if (!src || !user || !pw) {
+  console.error('Aufruf: node tools/build.mjs <rallye.json> <fotos-ordner> <benutzername> <passwort>');
   process.exit(1);
 }
 const data = JSON.parse(await readFile(src, 'utf8'));
@@ -28,9 +28,9 @@ for (const name of wanted) {
   photos[name] = 'data:image/jpeg;base64,' + toB64(new Uint8Array(bytes));
 }
 
-const player = { title: data.title, subtitle: data.subtitle, intro: data.intro, salt: data.salt, stations: [] };
+const player = { title: data.title, subtitle: data.subtitle, intro: data.intro, heroImg: data.heroImg, salt: data.salt, stations: [] };
 for (const s of data.stations) {
-  const out = { id: s.id, title: s.title, ort: s.ort, w3w: s.w3w, text: s.text, questions: [] };
+  const out = { id: s.id, title: s.title, ort: s.ort, w3w: s.w3w, text: s.text, img: s.teamImg, questions: [] };
   for (const [qi, q] of s.questions.entries()) {
     const fields = [];
     for (const [fi, f] of q.fields.entries()) {
@@ -45,5 +45,5 @@ for (const s of data.stations) {
 
 const outDir = path.join(here, '..');
 await writeFile(path.join(outDir, 'fragen.js'), '// Automatisch erzeugt – Lösungen nur als Prüfsumme.\nwindow.RALLYE = ' + JSON.stringify(player) + ';\n');
-await writeFile(path.join(outDir, 'orga.enc.json'), JSON.stringify(await encrypt({ ...data, photoData: photos }, password)));
+await writeFile(path.join(outDir, 'orga.enc.json'), JSON.stringify(await encrypt({ ...data, photoData: photos }, loginKey(user, pw))));
 console.log(`fertig: ${player.stations.length} Stationen, ${Object.keys(photos).length} Fotos verschlüsselt`);
