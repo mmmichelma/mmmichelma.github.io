@@ -1,9 +1,10 @@
 'use strict';
 
-/* Spieler-Quiz: Fragen aus fragen.js, Lösungen nur als Prüfsumme. */
+/* Spieler-Quiz mit Freischalt-Kette: Nur die richtigen Antworten
+   (oder ein Joker-Code der Spielleitung) öffnen die nächste Station. */
 
 const R = window.RALLYE;
-const { hashAnswer, w3wUrl, toB64 } = window.Rallye;
+const { w3wUrl, toB64, fromB64, tryUnseal, answerKey, jokerKey, stationKey } = window.Rallye;
 const $ = (sel, el = document) => el.querySelector(sel);
 const app = $('#app');
 const KEY = 'gaudi:' + R.salt;
@@ -50,13 +51,25 @@ function confetti() {
 
 /* ---------- Spielstand ---------- */
 
+// state.keys[i] = Schlüssel von Station i (Base64), sobald sie gelöst ist.
+// state.st[id] = { vals, first, fo (erster Versuch richtig), sec (Feld-Geheimnisse), tries, joker }
 let state = load();
-const stState = id => (state.st[id] ||= { vals: {}, ok: {}, checked: false });
-const allFields = s => s.questions.flatMap((q, qi) => q.fields.map((f, fi) => ({ q, qi, f, fi, k: `${qi}-${fi}` })));
-const maxPoints = R.stations.reduce((a, s) => a + allFields(s).filter(x => !x.f.open).length, 0);
-const openCount = R.stations.reduce((a, s) => a + allFields(s).filter(x => x.f.open).length, 0);
-const points = () => Object.values(state.st).reduce((a, s) => a + Object.values(s.ok).filter(v => v === true).length, 0);
-const checkedCount = () => R.stations.filter(s => state.st[s.id]?.checked).length;
+let stations = []; // entschlüsselte Stationen bis zur aktuellen
+
+const stState = id => (state.st[id] ||= { vals: {}, first: null, fo: {}, sec: {}, tries: 0, joker: false });
+const fieldsOf = p => p.questions.flatMap((q, qi) => q.fields.map((f, fi) => ({ q, qi, f, fi, k: `${qi}-${fi}` })));
+const points = () => Object.values(state.st).reduce((a, s) => a + Object.values(s.fo).filter(Boolean).length, 0);
+const solved = () => state.keys.length;
+const done = () => solved() >= R.count;
+
+async function unlockChain() {
+  stations = [R.stations[0]];
+  for (let i = 1; i < R.count && i <= state.keys.length; i++) {
+    const bytes = await tryUnseal(fromB64(state.keys[i - 1]), R.stations[i]);
+    if (!bytes) { state.keys.length = i - 1; save(); break; } // sollte nicht passieren
+    stations.push(JSON.parse(new TextDecoder().decode(bytes)));
+  }
+}
 
 /* ---------- Ansichten ---------- */
 
@@ -66,148 +79,149 @@ $('#brand').textContent = R.title;
 function intro() {
   app.innerHTML = `
     <section class="hero">
-      ${R.heroImg ? `<img src="${esc(R.heroImg)}" alt="" class="hero-img">` : ''}
       <p class="muted" style="margin:0">${esc(R.subtitle)}</p>
       <h1>${esc(R.title)}</h1>
     </section>
     <div class="card">
       <p class="pre">${esc(R.intro)}</p>
-      <p class="small muted">${R.stations.length} Stationen · ${maxPoints} Punkte${openCount ? ` · ${openCount} Schätzfrage${openCount > 1 ? 'n' : ''} wertet die Spielleitung` : ''}</p>
+      <p class="small muted">${R.count} Stationen</p>
       <form id="start" class="stack">
         <label>Name eures Autos<input id="team" required maxlength="30" autocomplete="off" placeholder="z. B. Roter Blitz"></label>
         <button class="primary big">🚗 Anmelden & losfahren – die Uhr läuft!</button>
       </form>
     </div>
     <a class="orga-link" href="orga.html">🔐 Spielleitung</a>`;
-  $('#start').onsubmit = e => {
+  $('#start').onsubmit = async e => {
     e.preventDefault();
-    state = { team: $('#team').value.trim(), start: Date.now(), end: null, st: {} };
-    save(); main();
+    state = { team: $('#team').value.trim(), start: Date.now(), end: null, keys: [], st: {} };
+    save(); await unlockChain(); main(true);
   };
 }
 
-let openId = null;
 let tick;
+function locationHtml(p) {
+  return `${p.w3w.length ? `<div class="w3w">${p.w3w.map(w => `<a class="btn" href="${esc(w3wUrl(w.words))}" target="_blank" rel="noopener"><span>📍 ${esc(w.label)}</span><span class="code"><b>///</b>${esc(w.words)}</span></a>`).join('')}</div>` : ''}
+    <p class="ort">📍 ${esc(p.ort)}</p>`;
+}
 
-function main() {
+function main(fresh) {
   clearInterval(tick);
-  if (openId == null) openId = (R.stations.find(s => !state.st[s.id]?.checked) || {}).id;
+  if (done()) return finish(fresh);
+  const i = solved(), p = stations[i], ss = stState(p.id);
+  const wrongTries = ss.tries;
+
   app.innerHTML = `
     <div class="hud"><span class="pill">⏱ <span id="clock">${fmtTime(Date.now() - state.start)}</span></span>
-      <span>${esc(state.team)}</span><span class="pill">⭐ <span id="pts">${points()}</span></span></div>
-    <div class="progress"><div id="bar" style="width:${checkedCount() / R.stations.length * 100}%"></div></div>
-    <div id="stations">${R.stations.map((s, i) => stationHtml(s, i)).join('')}</div>
-    <button id="finish" class="big ${checkedCount() === R.stations.length ? 'primary' : ''}">🏆 Rallye beenden</button>
+      <span>${esc(state.team)}</span><span class="pill">⭐ ${points()}</span></div>
+    <div class="progress"><div style="width:${i / R.count * 100}%"></div></div>
+
+    ${stations.slice(0, i).map((s, j) => {
+      const x = state.st[s.id];
+      const got = Object.values(x.fo).filter(Boolean).length;
+      return `<div class="card done-row"><span class="num">✓</span><span><b>${j + 1}. ${esc(s.title)}</b>
+        <small>${x.joker ? '🃏 Joker' : `${got} Punkt${got === 1 ? '' : 'e'}`}</small></span></div>`;
+    }).join('')}
+
+    <div class="card current ${fresh && i > 0 ? 'pop' : ''}">
+      ${fresh && i > 0 ? '<p class="unlocked">🎉 Richtig! Euer nächstes Ziel ist freigeschaltet:</p>' : ''}
+      <p class="small muted" style="margin:0">Station ${i + 1} von ${R.count}</p>
+      <h2>${esc(p.title)}</h2>
+      ${locationHtml(p)}
+      ${p.text ? `<p class="pre">${esc(p.text)}</p>` : ''}
+      <form id="answer">
+        ${p.questions.map((q, qi) => `
+          <div class="question"><p>${esc(q.q)}</p>
+            ${q.fields.map((f, fi) => {
+              const k = `${qi}-${fi}`, v = ss.vals[k] ?? '', ok = ss.sec[k] || (f.open && ss.first);
+              const bad = !ok && ss.first && !f.open;
+              if (q.type === 'mc') return `<div class="choices">${q.options.map(o =>
+                `<button type="button" class="choice ${v === o ? 'sel' : ''} ${v === o && ok ? 'ok' : v === o && bad ? 'bad' : ''}" data-k="${k}" data-v="${esc(o)}" ${ok ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>`;
+              return `<div class="field ${ok ? 'ok' : bad ? 'bad' : ''}">${f.label ? `<span class="lbl">${esc(f.label)}</span>` : ''}
+                <input data-k="${k}" value="${esc(v)}" autocomplete="off" ${q.type === 'num' ? 'inputmode="decimal"' : ''} placeholder="${q.type === 'num' ? 'Zahl' : 'Antwort'}" ${ok ? 'disabled' : ''}>
+                <span class="mark">${ok ? (f.open ? '📝' : '✅') : bad ? '❌' : ''}</span></div>`;
+            }).join('')}
+            ${q.fields.some(f => f.open) ? '<p class="open-note">📝 Schätzfrage – die Spielleitung wertet sie später. Jede Antwort bringt euch weiter.</p>' : ''}
+          </div>`).join('')}
+        <button class="primary big" id="check">🔓 Antworten prüfen & weiter</button>
+      </form>
+      ${wrongTries ? `<p class="small muted center" style="margin:10px 0 0">${wrongTries === 1 ? 'Punkte zählen nur für den ersten Versuch – aber probiert weiter, bis alles stimmt!' : `${wrongTries} Versuche`}</p>` : ''}
+      ${wrongTries >= 2 ? `<details class="joker"><summary>🃏 Ihr kommt nicht weiter?</summary>
+        <p class="small">Ruft die Spielleitung an und lasst euch den Joker-Code für diese Station geben. Mit Joker gibt es für die Station keine Punkte.</p>
+        <form id="jokerform" class="row"><input id="jokercode" inputmode="numeric" autocomplete="off" placeholder="Joker-Code" style="flex:1;margin:0"><button class="primary">Einlösen</button></form>
+      </details>` : ''}
+    </div>
+
+    ${Array.from({ length: R.count - i - 1 }, (_, j) => `<div class="card locked"><span class="num">🔒</span><span>Station ${i + j + 2}</span></div>`).join('')}
     <a class="orga-link" href="orga.html">🔐 Spielleitung</a>`;
+
   tick = setInterval(() => { const c = $('#clock'); if (c) c.textContent = fmtTime(Date.now() - state.start); }, 1000);
+  if (fresh && i > 0) { confetti(); buzz(120); $('.current').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
-  app.querySelectorAll('details.station').forEach(d => d.addEventListener('toggle', () => {
-    if (d.open) {
-      openId = d.dataset.id;
-      app.querySelectorAll('details.station[open]').forEach(o => { if (o !== d) o.open = false; });
-      d.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }));
-  $('#finish').onclick = () => {
-    const left = R.stations.length - checkedCount();
-    if (left && !confirm(`Noch ${left} Station${left > 1 ? 'en' : ''} nicht geprüft. Trotzdem beenden?`)) return;
-    state.end = Date.now(); save(); finish(true);
+  const form = $('#answer');
+  form.oninput = e => { const k = e.target.dataset.k; if (k) { ss.vals[k] = e.target.value; save(); } };
+  form.onclick = e => {
+    const b = e.target.closest('.choice'); if (!b || b.disabled) return;
+    form.querySelectorAll(`.choice[data-k="${b.dataset.k}"]`).forEach(x => x.classList.toggle('sel', x === b));
+    ss.vals[b.dataset.k] = b.dataset.v; save();
   };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#check');
+    const fields = fieldsOf(p);
+    if (fields.some(x => !String(ss.vals[x.k] ?? '').trim())) return toast('Bitte erst alle Fragen beantworten');
+    btn.disabled = true; btn.textContent = 'Prüfe…';
+
+    const firstTry = !ss.first;
+    if (firstTry) ss.first = { ...ss.vals };
+    for (const x of fields) {
+      if (x.f.open || ss.sec[x.k]) continue;
+      const key = await answerKey(R.salt, `${p.id}|${x.qi}|${x.fi}`, x.q.type, ss.vals[x.k]);
+      for (const w of x.f.wraps) {
+        const secret = await tryUnseal(key, w);
+        if (secret) { ss.sec[x.k] = toB64(secret); break; }
+      }
+      if (firstTry) ss.fo[x.k] = !!ss.sec[x.k];
+    }
+    const gated = fields.filter(x => !x.f.open);
+    if (gated.every(x => ss.sec[x.k])) {
+      const key = gated.length ? await stationKey(gated.map(x => fromB64(ss.sec[x.k]))) : fromB64(p.free);
+      await advance(key);
+    } else {
+      ss.tries++; save(); buzz([80, 60, 80]);
+      const wrong = gated.filter(x => !ss.sec[x.k]).length;
+      toast(wrong === 1 ? 'Eine Antwort stimmt noch nicht' : `${wrong} Antworten stimmen noch nicht`);
+      main(false);
+      const c = $('.current'); c.classList.add('shake');
+    }
+  };
+  $('#jokerform')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const key = await tryUnseal(await jokerKey(R.salt, p.id, $('#jokercode').value), p.joker);
+    if (!key) return toast('Falscher Joker-Code');
+    if (!ss.first) ss.first = { ...ss.vals };
+    ss.joker = true;
+    await advance(key);
+  });
 }
 
-function stationHtml(s, i) {
-  const ss = stState(s.id);
-  const mark = k => ss.checked ? (ss.ok[k] === true ? '✅' : ss.ok[k] === false ? '❌' : '📝') : '';
-  const cls = k => ss.checked ? (ss.ok[k] === true ? 'ok' : ss.ok[k] === false ? 'bad' : '') : '';
-  const q = s.questions.map((q, qi) => `
-    <div class="question"><p>${esc(q.q)}</p>
-      ${q.fields.map((f, fi) => {
-        const k = `${qi}-${fi}`, v = ss.vals[k] ?? '';
-        if (q.type === 'mc') return `<div class="choices">${q.options.map(o =>
-          `<button type="button" class="choice ${v === o ? 'sel' : ''} ${v === o ? cls(k) : ''}" data-k="${k}" data-v="${esc(o)}" ${ss.checked ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>
-          ${ss.checked ? `<div class="small">${mark(k)} ${ss.ok[k] ? 'Richtig!' : 'Leider falsch.'}</div>` : ''}`;
-        return `<div class="field ${cls(k)}">${f.label ? `<span class="lbl">${esc(f.label)}</span>` : ''}
-          <input data-k="${k}" value="${esc(v)}" autocomplete="off" ${q.type === 'num' ? 'inputmode="decimal"' : ''} placeholder="${q.type === 'num' ? 'Zahl' : 'Antwort'}" ${ss.checked ? 'disabled' : ''}>
-          <span class="mark">${mark(k)}</span></div>`;
-      }).join('')}
-      ${q.fields.some(f => f.open) ? '<p class="open-note">📝 Diese Frage wertet die Spielleitung.</p>' : ''}
-    </div>`).join('');
-
-  const got = Object.values(ss.ok).filter(v => v === true).length;
-  const max = allFields(s).filter(x => !x.f.open).length;
-  return `
-    <details class="card station ${ss.checked ? 'done' : ''}" data-id="${esc(s.id)}" ${openId === s.id ? 'open' : ''}>
-      <summary><span class="num">${ss.checked ? '✓' : i + 1}</span>
-        <span class="t"><b>${esc(s.title)}</b><small>${esc(s.ort)}${ss.checked ? ` · ${got}/${max} Punkte` : ''}</small></span>
-        <span class="chev">›</span></summary>
-      <div class="body">
-        ${s.w3w.length ? `<div class="w3w">${s.w3w.map(w => `<a class="btn" href="${esc(w3wUrl(w.words))}" target="_blank" rel="noopener">📍 ${esc(w.label)} <b>///</b>${esc(w.words)}</a>`).join('')}</div>` : ''}
-        ${s.img ? `<img src="${esc(s.img)}" alt="" class="station-img" loading="lazy">` : ''}
-        ${s.text ? `<p class="pre">${esc(s.text)}</p>` : ''}
-        <form data-station="${esc(s.id)}">${q}
-          ${ss.checked ? '' : '<button class="primary big">Antworten prüfen</button>'}
-        </form>
-      </div>
-    </details>`;
+async function advance(key) {
+  state.keys.push(toB64(key));
+  if (done()) state.end = Date.now();
+  save();
+  await unlockChain();
+  main(true);
 }
-
-// Eingaben sofort merken, damit nichts verloren geht
-app.addEventListener('input', e => {
-  const k = e.target.dataset.k, form = e.target.closest('form[data-station]');
-  if (!k || !form) return;
-  stState(form.dataset.station).vals[k] = e.target.value; save();
-});
-app.addEventListener('click', e => {
-  const b = e.target.closest('.choice'); if (!b || b.disabled) return;
-  const form = b.closest('form[data-station]');
-  form.querySelectorAll(`.choice[data-k="${b.dataset.k}"]`).forEach(x => x.classList.toggle('sel', x === b));
-  stState(form.dataset.station).vals[b.dataset.k] = b.dataset.v; save();
-});
-app.addEventListener('submit', async e => {
-  const form = e.target.closest('form[data-station]'); if (!form) return;
-  e.preventDefault();
-  const s = R.stations.find(x => x.id === form.dataset.station), ss = stState(s.id);
-  const fields = allFields(s);
-  if (fields.some(x => !String(ss.vals[x.k] ?? '').trim())) {
-    if (!confirm('Nicht alles ist ausgefüllt. Trotzdem prüfen? (Geht nur einmal!)')) return;
-  } else if (!confirm('Antworten jetzt prüfen? Danach kann nichts mehr geändert werden.')) return;
-
-  for (const x of fields) {
-    const v = String(ss.vals[x.k] ?? '').trim();
-    if (x.f.open) ss.ok[x.k] = null;
-    else ss.ok[x.k] = !!v && x.f.h.includes(await hashAnswer(R.salt, `${s.id}|${x.qi}|${x.fi}`, x.q.type, v));
-  }
-  ss.checked = true; save();
-  const got = Object.values(ss.ok).filter(v => v === true).length;
-  const max = fields.filter(x => !x.f.open).length;
-  if (got === max && max) { confetti(); buzz(120); toast('Alles richtig! 🎉'); }
-  else { buzz([80, 60, 80]); toast(`${got} von ${max} richtig`); }
-  openId = (R.stations.find(x => !state.st[x.id]?.checked) || {}).id ?? s.id;
-  main();
-});
 
 /* ---------- Ergebnis ---------- */
 
-function resultText() {
-  const lines = [`🏁 ${R.title} – Auto „${state.team}“`,
-    `⭐ ${points()} von ${maxPoints} Punkten${openCount ? ` (+ ${openCount} offene Frage${openCount > 1 ? 'n' : ''})` : ''} · ⏱ ${fmtTime(state.end - state.start)}`, ''];
-  R.stations.forEach((s, i) => {
-    const ss = state.st[s.id];
-    lines.push(`${i + 1}. ${s.title}${ss?.checked ? '' : ' (nicht geprüft)'}`);
-    for (const x of allFields(s)) {
-      const v = ss?.vals[x.k] ?? '–';
-      const m = !ss?.checked ? '' : x.f.open ? ' 📝' : ss.ok[x.k] ? ' ✅' : ' ❌';
-      lines.push(`   ${x.f.label ? x.f.label + ': ' : x.q.q + ' '}${v}${m}`);
-    }
-  });
-  return lines.join('\n');
-}
-
 // Kompakter Ergebnis-Code für die Rangliste der Spielleitung (dort wird neu gewertet)
 function resultLink() {
-  const a = {};
-  for (const s of R.stations) if (state.st[s.id]) a[s.id] = state.st[s.id].vals;
-  const payload = { v: 1, t: state.team, s: state.start, e: state.end, c: R.stations.filter(s => state.st[s.id]?.checked).map(s => s.id), a };
+  const st = {};
+  for (const p of stations) {
+    const x = state.st[p.id];
+    if (x?.first) st[p.id] = { f: x.first, v: x.vals, j: x.joker, n: x.tries };
+  }
+  const payload = { v: 2, t: state.team, s: state.start, e: state.end, st };
   const code = toB64(new TextEncoder().encode(JSON.stringify(payload))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   return new URL('orga.html#e=' + code, location.href).href;
 }
@@ -215,30 +229,33 @@ function resultLink() {
 function finish(fresh) {
   clearInterval(tick);
   if (fresh) confetti();
-  const text = resultText();
-  const msg = `🏁 ${R.title} – Auto „${state.team}“\n⭐ ${points()} von ${maxPoints} Punkten · ⏱ ${fmtTime(state.end - state.start)}\n\n👉 Für die Wertung (Spielleitung antippen):\n${resultLink()}`;
+  const jokers = Object.values(state.st).filter(x => x.joker).length;
+  const msg = `🏁 ${R.title} – Auto „${state.team}“\n✅ Alle ${R.count} Stationen geschafft · ⏱ ${fmtTime(state.end - state.start)}\n⭐ ${points()} Punkte im ersten Versuch${jokers ? ` · 🃏 ${jokers} Joker` : ''}\n\n👉 Für die Wertung (Spielleitung antippen):\n${resultLink()}`;
   app.innerHTML = `
     <div class="card center pop">
       <div style="font-size:3rem">🏆</div>
-      <h1>Geschafft, ${esc(state.team)}!</h1>
-      <p class="small muted">Wichtig: Schickt euer Ergebnis an die Spielleitung, sonst landet ihr nicht in der Rangliste.</p>
+      <h1>Ziel erreicht, ${esc(state.team)}!</h1>
       <p class="score">${points()}</p>
-      <p class="muted">von ${maxPoints} Punkten · Zeit ${fmtTime(state.end - state.start)}${openCount ? `<br>${openCount} Schätzfrage${openCount > 1 ? 'n' : ''} wertet noch die Spielleitung` : ''}</p>
+      <p class="muted">Punkte · Zeit ${fmtTime(state.end - state.start)}${jokers ? ` · ${jokers} Joker` : ''}</p>
+      <p class="small"><b>Wichtig:</b> Schickt jetzt euer Ergebnis an die Spielleitung, sonst landet ihr nicht in der Rangliste.</p>
       <div class="row" style="justify-content:center">
         <a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Ergebnis an Spielleitung senden</a>
         <button id="copy">📋 Kopieren</button>
       </div>
     </div>
-    <div class="card"><pre class="pre small" style="margin:0;font-family:inherit">${esc(text)}</pre></div>
+    <div class="card"><table class="results">${stations.map((s, i) => {
+      const x = state.st[s.id], got = Object.values(x.fo).filter(Boolean).length;
+      return `<tr><td>${i + 1}. ${esc(s.title)}</td><td>${x.joker ? '🃏' : `${got} P.`}</td></tr>`;
+    }).join('')}</table></div>
     <button id="reset" class="ghost danger small">Spielstand löschen</button>`;
   $('#copy').onclick = async () => {
     try { await navigator.clipboard.writeText(msg); toast('Kopiert – ab in die Gruppe!'); }
     catch { prompt('Ergebnis kopieren:', msg); }
   };
   $('#reset').onclick = () => {
-    if (!confirm('Wirklich alles löschen und neu anfangen?')) return;
+    if (!confirm('Wirklich alles löschen? Dann müsst ihr die ganze Rallye neu fahren.')) return;
     try { localStorage.removeItem(KEY); } catch { /* egal */ }
-    state = null; openId = null; intro();
+    state = null; intro();
   };
 }
 
@@ -247,6 +264,8 @@ async function wake() { try { if (document.visibilityState === 'visible') await 
 document.addEventListener('visibilitychange', wake);
 wake();
 
-if (!state) intro();
-else if (state.end) finish(false);
-else main();
+(async () => {
+  if (!state || !Array.isArray(state.keys)) return intro();
+  await unlockChain();
+  main(false);
+})();

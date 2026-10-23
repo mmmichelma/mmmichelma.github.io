@@ -6,9 +6,9 @@ const { decrypt, w3wUrl, normAnswer, fromB64, loginKey } = window.Rallye;
 const $ = (sel, el = document) => el.querySelector(sel);
 const app = $('#app');
 const SESSION = 'gaudi-orga-key';
-const RESULTS = 'gaudi-ergebnisse';
+const RESULTS = 'gaudi-ergebnisse-v2';
 const OPEN = 'gaudi-offene-loesungen';
-const TEST_OFF = 'gaudi-testdaten-aus';
+const TEST_OFF = 'gaudi-testdaten-aus-v2';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -40,8 +40,8 @@ function parseResult(code) {
   const m = String(code).match(/#?e=([A-Za-z0-9_-]+)/);
   const raw = (m ? m[1] : String(code).trim()).replace(/-/g, '+').replace(/_/g, '/');
   const r = JSON.parse(new TextDecoder().decode(fromB64(raw + '='.repeat((4 - raw.length % 4) % 4))));
-  if (!r.t || typeof r.a !== 'object') throw new Error('kein Ergebnis');
-  return { t: String(r.t).slice(0, 40), s: +r.s, e: +r.e, c: Array.isArray(r.c) ? r.c : [], a: r.a };
+  if (r.v !== 2 || !r.t || typeof r.st !== 'object') throw new Error('kein Ergebnis');
+  return { t: String(r.t).slice(0, 40), s: +r.s, e: +r.e, st: r.st };
 }
 function addResult(r) {
   const all = store.get(RESULTS, {});
@@ -54,40 +54,40 @@ function addResult(r) {
 
 /* ---------- Testdaten: 6 Autos ---------- */
 
+// Antworten = erster Versuch an jeder Station; joker = Stationen, die per Joker gelöst wurden
 function testResults() {
   const base = Date.UTC(2026, 7, 15, 8, 0, 0);
-  const car = (t, startMin, dur, ans, unchecked = []) => {
-    const a = {}, ids = Object.keys(ans);
-    for (const id of ids) a[id] = ans[id];
-    return { t, s: base + startMin * 60000, e: base + startMin * 60000 + dur * 1000, c: ids.filter(i => !unchecked.includes(i)), a, test: true };
+  const car = (t, startMin, dur, first, joker = []) => {
+    const st = {};
+    for (const [id, f] of Object.entries(first)) st[id] = { f, v: f, j: joker.includes(id), n: 0 };
+    return { t, s: base + startMin * 60000, e: base + startMin * 60000 + dur * 1000, st, test: true };
   };
-  const all = [
-    car('Roter Blitz', 0, 2 * 3600 + 4 * 60 + 37, ({
+  return [
+    car('Roter Blitz', 0, 2 * 3600 + 4 * 60 + 37, {
       tiermauer: { '0-0': '4', '1-0': '4' }, denkmal: { '0-0': '32', '1-0': 'Menora' }, wasserwerk: { '0-0': '3', '1-0': 'Frösche' },
       hergershausen: { '0-0': '3', '1-0': '40' }, ampeln: { '0-0': '4' }, packstation: { '0-0': '28', '0-1': '21', '0-2': '8', '0-3': '3' },
-      loewen: { '0-0': 'Löwen' }, pranger: { '0-0': '14. Jahrhundert', '1-0': '6' }, briefkasten: { '0-0': '9:15' } })),
-    car('Gelbe Gurke', 5, 2 * 3600 + 21 * 60 + 10, ({
+      loewen: { '0-0': 'Löwen' }, pranger: { '0-0': '14. Jahrhundert', '1-0': '6' }, briefkasten: { '0-0': '9:15' } }),
+    car('Gelbe Gurke', 5, 2 * 3600 + 21 * 60 + 10, {
       tiermauer: { '0-0': '4', '1-0': '2' }, denkmal: { '0-0': '32', '1-0': 'Menora' }, wasserwerk: { '0-0': '3', '1-0': 'Frösche' },
       hergershausen: { '0-0': '3', '1-0': '38' }, ampeln: { '0-0': '4' }, packstation: { '0-0': '28', '0-1': '21', '0-2': '8', '0-3': '3' },
-      loewen: { '0-0': 'Zum Löwen' }, pranger: { '0-0': '14. Jh', '1-0': '6' }, briefkasten: { '0-0': '9:15' } })),
-    car('Silberpfeil', 10, 1 * 3600 + 58 * 60 + 2, ({
+      loewen: { '0-0': 'Zum Löwen' }, pranger: { '0-0': '14. Jh', '1-0': '6' }, briefkasten: { '0-0': '9:15' } }),
+    car('Silberpfeil', 10, 1 * 3600 + 58 * 60 + 2, {
       tiermauer: { '0-0': '4', '1-0': '4' }, denkmal: { '0-0': '6', '1-0': 'Chanukkia' }, wasserwerk: { '0-0': '3', '1-0': 'Wild' },
       hergershausen: { '0-0': '3', '1-0': '40' }, ampeln: { '0-0': '5' }, packstation: { '0-0': '28', '0-1': '21', '0-2': '8', '0-3': '3' },
-      loewen: { '0-0': 'Löwen' }, pranger: { '0-0': '14. Jahrhundert', '1-0': '8' }, briefkasten: { '0-0': '09:15' } })),
-    car('Blaue Elise', 15, 2 * 3600 + 45 * 60 + 51, ({
+      loewen: { '0-0': 'Löwen' }, pranger: { '0-0': '14. Jahrhundert', '1-0': '8' }, briefkasten: { '0-0': '09:15' } }),
+    car('Blaue Elise', 15, 2 * 3600 + 45 * 60 + 51, {
       tiermauer: { '0-0': '3', '1-0': '4' }, denkmal: { '0-0': '32', '1-0': 'Menora' }, wasserwerk: { '0-0': '2', '1-0': 'Frösche' },
       hergershausen: { '0-0': '3', '1-0': '36' }, ampeln: { '0-0': '4' }, packstation: { '0-0': '27', '0-1': '21', '0-2': '8', '0-3': '3' },
-      loewen: { '0-0': 'Zum Löwen' }, pranger: { '0-0': '15. Jh', '1-0': '6' }, briefkasten: { '0-0': '10:15' } })),
-    car('Schwarzer Panther', 20, 2 * 3600 + 9 * 60 + 14, ({
+      loewen: { '0-0': 'Zum Löwen' }, pranger: { '0-0': '15. Jh', '1-0': '6' }, briefkasten: { '0-0': '10:15' } }),
+    car('Schwarzer Panther', 20, 2 * 3600 + 9 * 60 + 14, {
       tiermauer: { '0-0': '4', '1-0': '4' }, denkmal: { '0-0': '32', '1-0': 'Menora' }, wasserwerk: { '0-0': '3', '1-0': 'Frösche' },
       hergershausen: { '0-0': '3', '1-0': '40' }, ampeln: { '0-0': '3' }, packstation: { '0-0': '28', '0-1': '21', '0-2': '8', '0-3': '3' },
-      loewen: { '0-0': 'Löwen' }, pranger: { '0-0': '14', '1-0': '7' }, briefkasten: { '0-0': '' } }), ['briefkasten']),
-    car('Grüne Minna', 25, 2 * 3600 + 30 * 60 + 40, ({
+      loewen: { '0-0': 'Löwen' }, pranger: { '0-0': '14', '1-0': '7' }, briefkasten: { '0-0': '18:00' } }, ['briefkasten']),
+    car('Grüne Minna', 25, 2 * 3600 + 30 * 60 + 40, {
       tiermauer: { '0-0': '4', '1-0': '4' }, denkmal: { '0-0': '32', '1-0': 'Menora' }, wasserwerk: { '0-0': '3', '1-0': 'Frösche' },
       hergershausen: { '0-0': '3', '1-0': '40' }, ampeln: { '0-0': '4' }, packstation: { '0-0': '28', '0-1': '20', '0-2': '8', '0-3': '3' },
-      loewen: { '0-0': 'Löwe' }, pranger: { '0-0': '14. Jh.', '1-0': '6' }, briefkasten: { '0-0': '9:15' } })),
+      loewen: { '0-0': 'Löwe' }, pranger: { '0-0': '14. Jh.', '1-0': '6' }, briefkasten: { '0-0': '9:15' } }),
   ];
-  return all;
 }
 function loadTestData() {
   const all = store.get(RESULTS, {});
@@ -119,27 +119,31 @@ function maxPoints() {
   return D.stations.reduce((a, s) => a + fieldsOf(s).filter(x => solutionsFor(x, open).length).length, 0);
 }
 
+// Gewertet wird immer der erste Versuch an einer Station.
 function score(r) {
   const open = store.get(OPEN, {});
-  let pts = 0, pending = 0;
+  let pts = 0, pending = 0, reached = 0, jokers = 0;
   const stations = D.stations.map(s => {
-    const checked = r.c.includes(s.id);
+    const x = r.st[s.id];
+    const checked = !!x;
+    if (checked) reached++;
+    if (x?.j) jokers++;
     let got = 0, max = 0;
-    const fields = fieldsOf(s).map(x => {
-      const val = r.a[s.id]?.[x.k] ?? '';
-      const sol = solutionsFor(x, open);
+    const fields = fieldsOf(s).map(fx => {
+      const val = x?.f?.[fx.k] ?? '';
+      const sol = solutionsFor(fx, open);
       let ok = null;
       if (sol.length) {
         max++;
-        ok = checked && !!String(val).trim() && sol.some(a => normAnswer(x.q.type, a) === normAnswer(x.q.type, val));
+        ok = checked && !!String(val).trim() && sol.some(a => normAnswer(fx.q.type, a) === normAnswer(fx.q.type, val));
         if (ok) got++;
       } else if (checked) pending++;
-      return { ...x, val, ok };
+      return { ...fx, val, ok };
     });
     pts += got;
-    return { s, checked, got, max, fields };
+    return { s, checked, joker: !!x?.j, tries: x?.n || 0, got, max, fields };
   });
-  return { r, pts, pending, time: r.e - r.s, stations };
+  return { r, pts, pending, reached, jokers, time: r.e > r.s ? r.e - r.s : 0, stations };
 }
 
 function ranking() {
@@ -288,7 +292,7 @@ function renderWertung(el) {
       <table class="results rank">
         <thead><tr><th>Platz</th><th>Auto</th><th>Punkte</th><th>Zeit</th><th>Stationen</th></tr></thead>
         <tbody>${rank.map((x, i) => `<tr><td>${MEDALS[i] || i + 1}</td><td>${esc(x.r.t)}${x.r.test ? ' <span class="badge">Test</span>' : ''}</td>
-          <td><b>${x.pts}</b> / ${max}</td><td>${fmtTime(x.time)}</td><td>${x.r.c.length} / ${D.stations.length}</td></tr>`).join('')}</tbody>
+          <td><b>${x.pts}</b> / ${max}</td><td>${fmtTime(x.time)}</td><td>${x.reached} / ${D.stations.length}${x.jokers ? ` · 🃏${x.jokers}` : ''}</td></tr>`).join('')}</tbody>
       </table>
       <p class="small muted" style="margin:8px 0 0">Bei Punktgleichstand gewinnt die schnellere Zeit.</p>
     </div>
@@ -299,13 +303,14 @@ function renderWertung(el) {
         <thead><tr><th>Station</th>${rank.map(x => `<th title="${esc(x.r.t)}">${esc(x.r.t)}</th>`).join('')}</tr></thead>
         <tbody>${D.stations.map((s, si) => `<tr><td>${si + 1}. ${esc(s.title)}</td>${rank.map(x => {
           const st = x.stations[si];
-          if (!st.checked) return '<td class="na" title="nicht geprüft">–</td>';
+          if (!st.checked) return '<td class="na" title="nicht erreicht">–</td>';
+          if (st.joker) return `<td class="zero" title="per Joker gelöst">🃏 ${st.got}/${st.max}</td>`;
           if (!st.max) return '<td title="noch ohne Lösung">📝</td>';
           const full = st.got === st.max;
           return `<td class="${full ? 'full' : st.got ? 'part' : 'zero'}">${full ? '✅' : st.got ? '◐' : '❌'} ${st.got}/${st.max}</td>`;
         }).join('')}</tr>`).join('')}</tbody>
       </table>
-      <p class="small muted" style="margin:8px 0 0">✅ alles richtig · ◐ teilweise · ❌ nichts richtig · – nicht geprüft · 📝 Lösung fehlt noch</p>
+      <p class="small muted" style="margin:8px 0 0">Gewertet wird der erste Versuch. ✅ alles richtig · ◐ teilweise · ❌ nichts richtig · 🃏 Joker · – nicht erreicht · 📝 Lösung fehlt noch</p>
     </div>
 
     ${opens.length ? `<div class="card">
@@ -320,7 +325,7 @@ function renderWertung(el) {
     <div class="card">
       <h3>Antworten der Autos</h3>
       ${rank.map(x => `<details class="answers"><summary><b>${esc(x.r.t)}</b> – ${x.pts} Punkte</summary>
-        <table class="results">${x.stations.map(st => `<tr><td colspan="2"><b>${esc(st.s.title)}</b>${st.checked ? '' : ' <span class="small muted">(nicht geprüft)</span>'}</td></tr>
+        <table class="results">${x.stations.map(st => `<tr><td colspan="2"><b>${esc(st.s.title)}</b>${!st.checked ? ' <span class="small muted">(nicht erreicht)</span>' : st.joker ? ' <span class="small muted">(🃏 Joker)</span>' : ''}</td></tr>
           ${st.fields.map(f => `<tr><td class="small">${esc(f.f.label || f.q.q)}</td><td>${esc(f.val || '–')} ${f.ok === true ? '✅' : f.ok === false ? '❌' : '📝'}</td></tr>`).join('')}`).join('')}</table>
         <button class="icon ghost danger" data-del="${esc(Object.entries(store.get(RESULTS, {})).find(([, v]) => v.t === x.r.t && !!v.test === !!x.r.test)?.[0] || '')}">Ergebnis löschen</button>
       </details>`).join('')}
@@ -402,8 +407,9 @@ function renderLoesungen(el) {
       <div class="card">
         <h2>${i + 1}. ${esc(s.title)}</h2>
         <p class="muted" style="margin-bottom:8px">📍 ${esc(s.ort)}</p>
-        ${s.w3w.length ? `<div class="w3w">${s.w3w.map(w => `<a class="btn" href="${esc(w3wUrl(w.words))}" target="_blank" rel="noopener">${esc(w.label)} <b>///</b>${esc(w.words)}</a>`).join('')}</div>` : ''}
+        ${s.w3w.length ? `<div class="w3w">${s.w3w.map(w => `<a class="btn" href="${esc(w3wUrl(w.words))}" target="_blank" rel="noopener"><span>📍 ${esc(w.label)}</span><span class="code"><b>///</b>${esc(w.words)}</span></a>`).join('')}</div>` : ''}
         ${s.text ? `<p class="pre small muted">Text für die Teams: ${esc(s.text)}</p>` : ''}
+        <div class="joker-code">🃏 Joker-Code für diese Station: <b>${esc(s.joker)}</b></div>
         ${s.orga ? `<div class="note pre small">📝 ${esc(s.orga)}</div>` : ''}
         ${s.questions.map((q, qi) => (q._key = `${s.id}|${qi}`, `<div class="question"><p>${esc(q.q)}${q.added ? '<span class="badge">ergänzt</span>' : ''}</p>
           ${q.options ? `<p class="small muted" style="margin-bottom:4px">Auswahl: ${q.options.map(esc).join(' · ')}</p>` : ''}
