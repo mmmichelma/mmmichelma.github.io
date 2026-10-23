@@ -26,10 +26,37 @@
     return b;
   }
 
-  async function hashAnswer(salt, key, type, value) {
-    const data = new TextEncoder().encode(salt + '|' + key + '|' + normAnswer(type, value));
-    const buf = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
-    return Array.from(buf.slice(0, 8), b => b.toString(16).padStart(2, '0')).join('');
+  async function sha256(data) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+    return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  }
+
+  // Verschlüsseln mit einem rohen 256-Bit-Schlüssel (für die Freischalt-Kette der Stationen).
+  async function seal(keyBytes, bytes) {
+    const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes));
+    return toB64(iv) + '.' + toB64(ct);
+  }
+  // Wirft einen Fehler, wenn der Schlüssel nicht passt.
+  async function unseal(keyBytes, sealed) {
+    const [iv, ct] = sealed.split('.').map(fromB64);
+    const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
+    return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct));
+  }
+  async function tryUnseal(keyBytes, sealed) {
+    try { return await unseal(keyBytes, sealed); } catch { return null; }
+  }
+
+  // Schlüssel aus einer Antwort: nur die richtige Antwort öffnet das Geheimnis des Feldes.
+  function answerKey(salt, fieldKey, type, value) { return sha256(salt + '|' + fieldKey + '|' + normAnswer(type, value)); }
+  function jokerKey(salt, stationId, code) { return sha256(salt + '|joker|' + stationId + '|' + normText(code)); }
+  // Schlüssel der Station = Hash aller Feld-Geheimnisse; er öffnet die nächste Station.
+  function stationKey(secrets) {
+    const all = new Uint8Array(secrets.reduce((a, b) => a + b.length, 0));
+    let o = 0;
+    for (const b of secrets) { all.set(b, o); o += b.length; }
+    return sha256(all);
   }
 
   const ITER = 250000;
@@ -57,5 +84,6 @@
 
   function w3wUrl(words) { return 'https://what3words.com/' + encodeURIComponent(words); }
 
-  g.Rallye = { normText, normNum, normAnswer, hashAnswer, encrypt, decrypt, toB64, fromB64, loginKey, w3wUrl };
+  g.Rallye = { normText, normNum, normAnswer, encrypt, decrypt, toB64, fromB64, loginKey, w3wUrl,
+    seal, unseal, tryUnseal, answerKey, jokerKey, stationKey };
 })(typeof window !== 'undefined' ? window : globalThis);
