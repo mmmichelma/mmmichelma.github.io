@@ -1,0 +1,12 @@
+{
+  "name": "Rallye-Baukasten",
+  "short_name": "Rallye",
+  "description": "Schnitzeljagden und Rallyes bauen, teilen und spielen – mit GPS-Kompass.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fff8f0",
+  "theme_color": "#f28c18",
+  "lang": "de",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
