@@ -13,7 +13,62 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; } }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* privater Modus */ } }
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* privater Modus */ }
+  scheduleSync();
+}
+
+/* ---------- Spielstand im Hintergrund speichern (Google-Tabelle der Spielleitung) ---------- */
+
+const API = R.backend || '';
+const teamId = name => String(name).trim().toLowerCase().replace(/\s+/g, ' ');
+let syncTimer, syncing = false, dirty = false;
+
+function scheduleSync() {
+  if (!API || !state) return;
+  dirty = true;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(sync, 400);
+}
+async function sync() {
+  if (!API || !dirty || syncing || !state) return;
+  syncing = true; dirty = false;
+  try {
+    const res = await fetch(API, { method: 'POST', body: JSON.stringify({ state, station: Math.min(solved() + 1, R.count), points: points() }) });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error);
+    // Ein anderes Handy desselben Teams ist schon weiter: diesen Stand übernehmen
+    if (j.state && j.state.keys.length > state.keys.length) await adopt(j.state);
+    syncStatus(true);
+  } catch {
+    dirty = true; syncStatus(false);
+    setTimeout(sync, 15000);
+  } finally {
+    syncing = false;
+    if (dirty && navigator.onLine !== false) scheduleSync();
+  }
+}
+let lastSyncOk = null;
+function syncStatus(ok) {
+  lastSyncOk = ok;
+  const el = $('#sync');
+  if (el) el.textContent = ok ? '☁️ gespeichert' : '⚠️ offline – wird nachgeholt';
+}
+async function loadRemote(name) {
+  if (!API) return null;
+  const res = await fetch(API + '?action=load&id=' + encodeURIComponent(teamId(name)));
+  const j = await res.json();
+  return j.ok && j.state && Array.isArray(j.state.keys) ? j.state : null;
+}
+async function adopt(remote) {
+  state = remote;
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* egal */ }
+  await unlockChain();
+  main(false);
+  toast('Spielstand von eurem anderen Handy übernommen');
+}
+addEventListener('online', () => sync());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sync(); });
 
 let toastTimer;
 function toast(msg) {
@@ -87,14 +142,33 @@ function intro() {
       <p class="small muted">${R.count} Stationen</p>
       <form id="start" class="stack">
         <label>Name eures Autos<input id="team" required maxlength="30" autocomplete="off" placeholder="z. B. Roter Blitz"></label>
-        <button class="primary big">🚗 Anmelden & losfahren – die Uhr läuft!</button>
+        <button class="primary big" id="startbtn">🚗 Anmelden & losfahren</button>
+        <p class="small muted center" style="margin:0">Browser geschlossen oder Handy gewechselt? Einfach denselben Autonamen eingeben – ihr macht an derselben Stelle weiter.</p>
       </form>
     </div>
     <a class="orga-link" href="orga.html">🔐 Spielleitung</a>`;
   $('#start').onsubmit = async e => {
     e.preventDefault();
-    state = { team: $('#team').value.trim(), start: Date.now(), end: null, keys: [], st: {} };
-    save(); await unlockChain(); main(true);
+    const name = $('#team').value.trim().replace(/\s+/g, ' ');
+    const btn = $('#startbtn');
+    btn.disabled = true; btn.textContent = 'Suche Spielstand…';
+    let remote = null;
+    try { remote = await loadRemote(name); } catch { toast('Keine Verbindung – der Spielstand wird erst mal nur auf diesem Handy gespeichert'); }
+    const local = load();
+    const candidates = [remote, local && local.keys && teamId(local.team) === teamId(name) ? local : null].filter(Boolean);
+    const existing = candidates.sort((a, b) => b.keys.length - a.keys.length)[0];
+    if (existing) {
+      const where = existing.end ? 'schon im Ziel' : `an Station ${existing.keys.length + 1} von ${R.count}`;
+      if (!confirm(`„${existing.team}“ ist schon unterwegs (${where}).\n\nSeid ihr das? Dann geht es genau an dieser Stelle weiter.\n\nAbbrechen = anderen Namen wählen`)) {
+        btn.disabled = false; btn.textContent = '🚗 Anmelden & losfahren';
+        return;
+      }
+      state = existing;
+      toast('Willkommen zurück! 🚗');
+    } else {
+      state = { team: name, start: Date.now(), end: null, keys: [], st: {} };
+    }
+    save(); await unlockChain(); main(false);
   };
 }
 
@@ -113,6 +187,7 @@ function main(fresh) {
   app.innerHTML = `
     <div class="hud"><span class="pill">⏱ <span id="clock">${fmtTime(Date.now() - state.start)}</span></span>
       <span>${esc(state.team)}</span><span class="pill">⭐ ${points()}</span></div>
+    ${API ? `<p class="small muted center" id="sync" style="margin:-4px 0 6px">${lastSyncOk === false ? '⚠️ offline – wird nachgeholt' : '☁️ gespeichert'}</p>` : ''}
     <div class="progress"><div style="width:${i / R.count * 100}%"></div></div>
 
     ${stations.slice(0, i).map((s, j) => {
@@ -268,4 +343,10 @@ wake();
   if (!state || !Array.isArray(state.keys)) return intro();
   await unlockChain();
   main(false);
+  // Vielleicht war das Team inzwischen auf einem anderen Handy weiter
+  try {
+    const remote = await loadRemote(state.team);
+    if (remote && remote.keys.length > state.keys.length) await adopt(remote);
+    else if (API) { dirty = true; sync(); }
+  } catch { /* offline: lokal weiterspielen */ }
 })();

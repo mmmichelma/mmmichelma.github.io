@@ -15,7 +15,7 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const here = path.dirname(new URL(import.meta.url).pathname);
 require(path.join(here, '..', 'common.js'));
-const { encrypt, toB64, loginKey, seal, answerKey, jokerKey, stationKey, normAnswer } = globalThis.Rallye;
+const { encrypt, toB64, loginKey, seal, answerKey, jokerKey, stationKey, normAnswer, sha256 } = globalThis.Rallye;
 
 const [src, fotoDir, user, pw] = process.argv.slice(2);
 if (!src || !user || !pw) {
@@ -32,7 +32,11 @@ for (const name of wanted) {
 }
 
 const rand = n => crypto.getRandomValues(new Uint8Array(n));
-const usedJokers = new Set();
+// Feste Geheimnisse aus data.seed: Ein erneuter Build ändert die Schlüssel nicht,
+// gespeicherte Spielstände bleiben also gültig. Joker-Codes bleiben ebenfalls gleich.
+if (!data.seed) throw new Error('rallye.json braucht ein "seed"-Feld (zufälliger Text)');
+const derive = label => sha256(data.seed + '|' + label);
+const usedJokers = new Set(data.stations.map(s => s.joker).filter(Boolean));
 function newJoker() {
   let c;
   do { c = String(1000 + new DataView(rand(4).buffer).getUint32(0) % 9000); } while (usedJokers.has(c));
@@ -48,8 +52,8 @@ for (const s of data.stations) {
     const fields = [];
     for (const [fi, f] of q.fields.entries()) {
       if (!f.a.length) { fields.push({ label: f.label || '', open: true }); continue; }
-      const secret = rand(32);
       const fieldKey = `${s.id}|${qi}|${fi}`;
+      const secret = await derive('feld|' + fieldKey);
       // Varianten, die nach dem Normalisieren gleich sind, nur einmal einpacken
       const variants = [...new Map(f.a.map(a => [normAnswer(q.type, a), a])).values()];
       const wraps = await Promise.all(variants.map(async a => seal(await answerKey(data.salt, fieldKey, q.type, a), secret)));
@@ -59,8 +63,8 @@ for (const s of data.stations) {
     }
     questions.push({ q: q.q, type: q.type, options: q.options, fields });
   }
-  const key = secrets.length ? await stationKey(secrets) : rand(32);
-  s.joker = newJoker();
+  const key = secrets.length ? await stationKey(secrets) : await derive('frei|' + s.id);
+  s.joker ||= newJoker();
   const p = { id: s.id, title: s.title, ort: s.ort, w3w: s.w3w, text: s.text, questions,
     joker: await seal(await jokerKey(data.salt, s.id, s.joker), key) };
   if (!secrets.length) p.free = toB64(key); // nur offene Fragen: jede Antwort schaltet frei
@@ -72,7 +76,7 @@ const enc = new TextEncoder();
 const chain = [payloads[0]];
 for (let i = 1; i < payloads.length; i++) chain.push(await seal(keys[i - 1], enc.encode(JSON.stringify(payloads[i]))));
 
-const player = { title: data.title, subtitle: data.subtitle, intro: data.intro, salt: data.salt,
+const player = { title: data.title, subtitle: data.subtitle, intro: data.intro, salt: data.salt, backend: data.backend || '',
   count: payloads.length, fieldCount: payloads.reduce((a, p) => a + p.questions.reduce((b, q) => b + q.fields.length, 0), 0), stations: chain };
 
 const outDir = path.join(here, '..');

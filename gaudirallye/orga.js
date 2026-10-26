@@ -169,6 +169,7 @@ async function unlock(key) {
   let pending = null;
   try { pending = sessionStorage.getItem('gaudi-pending'); sessionStorage.removeItem('gaudi-pending'); } catch { /* egal */ }
   if (pending) importCode(pending);
+  await fetchLive();
   show('wertung');
   return true;
 }
@@ -213,6 +214,48 @@ function importCode(code) {
 /* ---------- Ansichten ---------- */
 
 let tab = 'wertung';
+/* ---------- Live-Stände aus der Google-Tabelle ---------- */
+
+let liveAt = null, liveErr = false, liveTimer = null;
+async function fetchLive() {
+  if (!D.backend || !D.orgaSecret) return false;
+  try {
+    const j = await fetch(D.backend + '?action=all&secret=' + encodeURIComponent(D.orgaSecret)).then(r => r.json());
+    if (!j.ok) throw new Error(j.error);
+    const all = store.get(RESULTS, {});
+    for (const st of j.teams) {
+      if (!st || !st.team || !Array.isArray(st.keys)) continue;
+      const out = {};
+      for (const [id, x] of Object.entries(st.st || {})) if (x.first) out[id] = { f: x.first, v: x.vals, j: !!x.joker, n: x.tries || 0 };
+      all[st.team.trim().toLowerCase().replace(/\s+/g, ' ')] = { t: st.team, s: st.start, e: st.end, st: out, solved: st.keys.length, live: true, imported: Date.now() };
+    }
+    store.set(RESULTS, all);
+    liveAt = new Date(); liveErr = false;
+    return true;
+  } catch {
+    liveErr = true;
+    return false;
+  }
+}
+function startLive() {
+  clearInterval(liveTimer);
+  if (!D.backend) return;
+  liveTimer = setInterval(async () => {
+    if (tab !== 'wertung' || document.visibilityState !== 'visible') return;
+    const before = localStorage.getItem(RESULTS);
+    await fetchLive();
+    // Nur neu zeichnen, wenn sich etwas geändert hat und gerade niemand tippt
+    const typing = document.activeElement?.matches('input, textarea');
+    if (localStorage.getItem(RESULTS) !== before && !typing && !document.querySelector('details.answers[open]')) show('wertung');
+    else { const el = $('#live'); if (el) el.innerHTML = liveHtml(); }
+  }, 30000);
+}
+function liveHtml() {
+  if (!D.backend) return '⚪ Kein Live-Speicher eingerichtet – Ergebnisse kommen per WhatsApp-Link.';
+  if (liveErr) return '⚠️ Live-Stände gerade nicht erreichbar – neuer Versuch alle 30 Sekunden.';
+  return `🟢 Live – aktualisiert ${liveAt ? liveAt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '…'} (alle 30 Sekunden)`;
+}
+
 function show(t) {
   tab = t;
   app.innerHTML = `
@@ -229,11 +272,17 @@ function show(t) {
     <div id="view"></div>`;
   app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => show(b.dataset.tab));
   $('#print').onclick = () => print();
-  $('#logout').onclick = () => { try { sessionStorage.removeItem(SESSION); } catch { /* egal */ } D = null; login(); };
+  $('#logout').onclick = () => {
+    try { sessionStorage.removeItem(SESSION); } catch { /* egal */ }
+    clearInterval(liveTimer); liveTimer = null; D = null; login();
+  };
   if (t === 'wertung') renderWertung($('#view')); else renderLoesungen($('#view'));
+  if (!liveTimer) startLive();
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
+// Zeit im Ziel, oder wo das Auto gerade unterwegs ist
+const zeit = x => x.r.e ? fmtTime(x.time) : `🚗 Station ${Math.min((x.r.solved ?? x.reached) + 1, D.stations.length)}`;
 
 function renderWertung(el) {
   const rank = ranking();
@@ -259,6 +308,7 @@ function renderWertung(el) {
     <section class="hero" style="padding-top:0">
       <p class="muted" style="margin:0">${esc(D.subtitle)}</p>
       <h1>🏆 Rangliste</h1>
+      <p class="small" id="live">${liveHtml()}</p>
       <p class="muted">${rank.length} Auto${rank.length > 1 ? 's' : ''} · ${max} Punkte möglich${missing.length ? ` · ${missing.length} Frage${missing.length > 1 ? 'n' : ''} noch ohne Lösung` : ''}</p>
       ${hasTest ? `<div class="note small row between"><span>🧪 Das sind <b>Testdaten</b> mit 6 Beispiel-Autos.</span><button id="untest" class="icon">Testdaten entfernen</button></div>` : ''}
     </section>
@@ -268,7 +318,7 @@ function renderWertung(el) {
         <div class="podest p${i + 1}">
           <div class="medal">${MEDALS[i]}</div>
           <div class="car">${esc(podium[i].r.t)}</div>
-          <div class="small muted">${podium[i].pts} P · ${fmtTime(podium[i].time)}</div>
+          <div class="small muted">${podium[i].pts} P · ${zeit(podium[i])}</div>
           <div class="block">${i + 1}</div>
         </div>`).join('')}
     </div>
@@ -292,7 +342,7 @@ function renderWertung(el) {
       <table class="results rank">
         <thead><tr><th>Platz</th><th>Auto</th><th>Punkte</th><th>Zeit</th><th>Stationen</th></tr></thead>
         <tbody>${rank.map((x, i) => `<tr><td>${MEDALS[i] || i + 1}</td><td>${esc(x.r.t)}${x.r.test ? ' <span class="badge">Test</span>' : ''}</td>
-          <td><b>${x.pts}</b> / ${max}</td><td>${fmtTime(x.time)}</td><td>${x.reached} / ${D.stations.length}${x.jokers ? ` · 🃏${x.jokers}` : ''}</td></tr>`).join('')}</tbody>
+          <td><b>${x.pts}</b> / ${max}</td><td>${zeit(x)}</td><td>${x.reached} / ${D.stations.length}${x.jokers ? ` · 🃏${x.jokers}` : ''}</td></tr>`).join('')}</tbody>
       </table>
       <p class="small muted" style="margin:8px 0 0">Bei Punktgleichstand gewinnt die schnellere Zeit.</p>
     </div>
