@@ -85,5 +85,5 @@
   function w3wUrl(words) { return 'https://what3words.com/' + encodeURIComponent(words); }
 
   g.Rallye = { normText, normNum, normAnswer, encrypt, decrypt, toB64, fromB64, loginKey, w3wUrl,
-    seal, unseal, tryUnseal, answerKey, jokerKey, stationKey };
+    sha256, seal, unseal, tryUnseal, answerKey, jokerKey, stationKey };
 })(typeof window !== 'undefined' ? window : globalThis);
