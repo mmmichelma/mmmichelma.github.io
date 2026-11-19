@@ -7,6 +7,9 @@
 | `seite494-498_ThreadTestlauf` | Buch S. 494 / 498: `MeinRunnable` + `ThreadTestlauf`, die Reihenfolge der Ausgabe ist zufällig |
 | `seite502_ThreadSleep` | Buch S. 502: dasselbe Programm mit `Thread.sleep(2000)`, die Reihenfolge ist jetzt vorhersagbar |
 | `seite503_ZweiThreads` | Buch S. 503: zwei Threads (Alpha/Beta) mit demselben Runnable |
+| `unterricht_1_extendsThread` | Unterricht: `MeinThread extends Thread` + `MeinThreadStart` (Hinweis: immer `start()` aufrufen, nie `run()` direkt) |
+| `unterricht_2_Runnable` | Unterricht: `MeinRunnable implements Runnable` + `MeinThreadMitRunnableStart` |
+| `unterricht_3_RunnableEins` | Unterricht: `MeinRunnableEins` gibt den Thread-Namen aus. Die Startklasse `MeinRunnableEinsStart` habe ich ergänzt |
 | `chat_einfach` | Arbeitsblatt Chat-Server: einfacher `ChatServer` (Schleife mit `accept()`) + `ChatClient` |
 | `chat_threads` | Erweiterungen: `ThreadChatServer`, `ThreadChatClient` (Konsole) und `ChatClientGUI` (Swing) |
 
