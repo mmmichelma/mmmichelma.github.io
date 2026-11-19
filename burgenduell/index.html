@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex,nofollow">
+<title>Burgenduell</title>
+<style>
+  :root { --blue:#3b7bea; --red:#e2483d; --mana:#c44bd6; --bg:#1c2333; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#fff; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; overflow:hidden; touch-action:none; }
+  #app { height:100%; display:flex; flex-direction:column; align-items:center; }
+  #top { width:100%; max-width:480px; display:flex; justify-content:space-between; align-items:center; padding:6px 12px; font-weight:700; }
+  .crowns { font-size:18px; letter-spacing:2px; }
+  #timer { font-size:20px; background:#0006; padding:2px 12px; border-radius:8px; }
+  #timer.ot { color:#ffcf3a; }
+  #wrap { flex:1; min-height:0; width:100%; display:flex; justify-content:center; align-items:center; }
+  canvas { display:block; border-radius:10px; box-shadow:0 4px 20px #0008; touch-action:none; }
+  #bottom { width:100%; max-width:480px; padding:6px 10px 10px; }
+  #manaRow { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  #manaBar { flex:1; height:16px; background:#0007; border-radius:8px; overflow:hidden; position:relative; }
+  #manaFill { height:100%; width:0; background:linear-gradient(90deg,#9a2fb0,#e07af0); transition:width .1s linear; }
+  #manaTicks { position:absolute; inset:0; display:flex; }
+  #manaTicks span { flex:1; border-right:1px solid #0005; }
+  #manaNum { width:30px; text-align:center; font-weight:800; font-size:18px; color:#f0a6ff; }
+  #hand { display:flex; gap:6px; align-items:stretch; }
+  #next { width:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:10px; opacity:.8; }
+  #next .ico { font-size:22px; }
+  .card { flex:1; background:linear-gradient(#3a4664,#28304a); border:2px solid #56638a; border-radius:10px; padding:4px 2px 3px; text-align:center; cursor:pointer; position:relative; transition:transform .1s; }
+  .card .ico { font-size:30px; line-height:38px; }
+  .card .nm { font-size:10px; font-weight:600; white-space:nowrap; overflow:hidden; }
+  .card .cost { position:absolute; top:-7px; left:-5px; background:var(--mana); border-radius:50%; width:22px; height:22px; line-height:22px; font-size:13px; font-weight:800; box-shadow:0 1px 3px #000a; }
+  .card.sel { transform:translateY(-8px); border-color:#ffd54a; box-shadow:0 0 12px #ffd54a88; }
+  .card.poor { filter:grayscale(.8) brightness(.7); }
+  #overlay { position:fixed; inset:0; background:#000b; display:flex; align-items:center; justify-content:center; z-index:10; }
+  #overlay .box { background:#2a3350; border-radius:16px; padding:22px 20px; max-width:340px; width:90%; text-align:center; box-shadow:0 10px 40px #000; }
+  #overlay h1 { margin:0 0 6px; font-size:30px; }
+  #overlay p { font-size:14px; line-height:1.45; opacity:.9; margin:8px 0; }
+  #overlay button { margin-top:12px; font-size:18px; font-weight:800; padding:12px 26px; border:0; border-radius:12px; background:#ffcc33; color:#3a2a00; cursor:pointer; box-shadow:0 4px 0 #b58a10; }
+  #overlay button:active { transform:translateY(2px); box-shadow:0 2px 0 #b58a10; }
+  .diff { display:flex; gap:6px; justify-content:center; margin-top:10px; }
+  .diff label { font-size:13px; background:#0004; padding:6px 10px; border-radius:8px; cursor:pointer; }
+  .diff input { margin-right:4px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="crowns" id="enemyCrowns" style="color:#ff8a80">Gegner ☆☆☆</div>
+    <div id="timer">3:00</div>
+    <div class="crowns" id="myCrowns" style="color:#8ab4ff">Du ☆☆☆</div>
+  </div>
+  <div id="wrap"><canvas id="cv"></canvas></div>
+  <div id="bottom">
+    <div id="manaRow">
+      <div id="manaBar"><div id="manaFill"></div><div id="manaTicks"></div></div>
+      <div id="manaNum">0</div>
+    </div>
+    <div id="hand"><div id="next"><div>Nächste</div><div class="ico" id="nextIco"></div></div></div>
+  </div>
+</div>
+<div id="overlay">
+  <div class="box" id="ovBox">
+    <h1>🏰 Burgenduell</h1>
+    <p>Zerstöre die Türme des Gegners! Wähle unten eine Karte und tippe auf <b>deine Spielfeldhälfte</b>, um Einheiten zu schicken. Karten kosten <b style="color:#f0a6ff">Mana</b>, das sich mit der Zeit auflädt.</p>
+    <p>Fällt ein gegnerischer Seitenturm, darfst du auch auf dieser Seite weiter vorne platzieren. Wer die Hauptburg zerstört, gewinnt sofort.</p>
+    <div class="diff">
+      <label><input type="radio" name="d" value="0">Leicht</label>
+      <label><input type="radio" name="d" value="1" checked>Normal</label>
+      <label><input type="radio" name="d" value="2">Schwer</label>
+    </div>
+    <button id="startBtn">Spielen</button>
+  </div>
+</div>
+<script>
+(() => {
+'use strict';
+// ---------- Field geometry (logical units) ----------
+const W = 360, H = 640;
+const RIVER_TOP = 300, RIVER_BOT = 340, MID = 320;
+const BRIDGES = [70, 290], BRIDGE_HW = 22;
+const MANA_MAX = 10;
+
+const CARDS = {
+  ritter:   { name:'Ritter',     ico:'⚔️', cost:3, count:1, hp:1400, dmg:160, atk:1.2, range:18, speed:45, r:11, hitsAir:false },
+  bogen:    { name:'Bogenschützen', ico:'🏹', cost:3, count:2, hp:260, dmg:85, atk:1.0, range:105, speed:50, r:8, hitsAir:true, proj:'arrow' },
+  golem:    { name:'Steingolem', ico:'🗿', cost:5, count:1, hp:3200, dmg:210, atk:1.5, range:18, speed:30, r:15, hitsAir:false, buildings:true },
+  wichtel:  { name:'Wichtel',    ico:'😈', cost:2, count:3, hp:170, dmg:90, atk:1.0, range:14, speed:85, r:7, hitsAir:false },
+  drache:   { name:'Drache',     ico:'🐉', cost:4, count:1, hp:950, dmg:120, atk:1.6, range:60, speed:60, r:12, air:true, hitsAir:true, splash:32, proj:'fire' },
+  magierin: { name:'Magierin',   ico:'🧙', cost:5, count:1, hp:560, dmg:185, atk:1.4, range:100, speed:50, r:10, hitsAir:true, splash:36, proj:'magic' },
+  fleder:   { name:'Fledermäuse',ico:'🦇', cost:2, count:4, hp:70, dmg:70, atk:1.1, range:14, speed:95, r:6, air:true, hitsAir:true },
+  feuerball:{ name:'Feuerball',  ico:'🔥', cost:4, spell:true, dmg:520, radius:48, towerFactor:0.4 },
+};
+const DECK = Object.keys(CARDS);
+
+// ---------- Canvas setup ----------
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let scale = 1;
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const aw = wrap.clientWidth - 8, ah = wrap.clientHeight - 4;
+  scale = Math.max(0.3, Math.min(aw / W, ah / H));
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cv.width = Math.round(W * scale * dpr);
+  cv.height = Math.round(H * scale * dpr);
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+// ---------- State ----------
+let S = null;
+let difficulty = 1;
+
+function makeTower(team, kind, x, y) {
+  const king = kind === 'king';
+  return { team, kind, x, y, building:true, r: king ? 26 : 21, hp: king ? 4000 : 2600, maxHp: king ? 4000 : 2600,
+           dmg: king ? 105 : 90, atk: king ? 1.0 : 0.8, range: king ? 140 : 135, cd:0, hitsAir:true, dead:false };
+}
+
+function shuffle(a){ a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function newSide() {
+  const q = shuffle(DECK);
+  return { mana: 5, hand: q.slice(0,4), queue: q.slice(4), crowns: 0 };
+}
+
+function newGame() {
+  S = {
+    t: 0, timeLeft: 180, overtime: false, over: false,
+    towers: [
+      makeTower(0,'left',70,520), makeTower(0,'right',290,520), makeTower(0,'king',180,592),
+      makeTower(1,'left',70,120), makeTower(1,'right',290,120), makeTower(1,'king',180,48),
+    ],
+    units: [], projs: [], fx: [],
+    side: [newSide(), newSide()],
+    selected: -1, hover: null,
+    ai: { next: 2, plan: null },
+  };
+  buildHand();
+}
+
+function kingActive(k) {
+  if (k.hp < k.maxHp) return true;
+  return S.towers.some(t => t.team === k.team && t.kind !== 'king' && t.dead);
+}
+
+// ---------- Spawning ----------
+function playCard(team, idx, x, y) {
+  const sd = S.side[team];
+  const key = sd.hand[idx];
+  const c = CARDS[key];
+  if (sd.mana < c.cost) return false;
+  sd.mana -= c.cost;
+  sd.hand[idx] = sd.queue.shift();
+  sd.queue.push(key);
+  if (c.spell) {
+    S.projs.push({ kind:'fireball', team, x: x, y: team===0 ? H+20 : -20, tx:x, ty:y, speed:420, card:c });
+  } else {
+    const offs = c.count === 1 ? [[0,0]] : c.count === 2 ? [[-10,0],[10,0]] : c.count === 3 ? [[-12,6],[12,6],[0,-10]] : [[-10,-8],[10,-8],[-10,8],[10,8]];
+    for (const [ox,oy] of offs) {
+      S.units.push({ team, key, c, x: clamp(x+ox, 8, W-8), y: clamp(y+oy, 8, H-8), hp:c.hp, maxHp:c.hp,
+        cd: 0.3, deploy: 1.0, air: !!c.air, r:c.r, target:null, dead:false, face: team===0 ? -1 : 1 });
+    }
+  }
+  S.fx.push({ kind:'ring', x, y, t:0, life:0.5, color: team===0 ? '#8ab4ff' : '#ff8a80' });
+  return true;
+}
+
+function validDrop(team, key, x, y) {
+  if (x < 6 || x > W-6 || y < 6 || y > H-6) return false;
+  if (CARDS[key].spell) return true;
+  const own = team === 0 ? y > RIVER_BOT + 4 : y < RIVER_TOP - 4;
+  if (own) return !insideTower(x, y);
+  // pocket: enemy side tower destroyed -> may place on that lane up to some depth
+  const enemy = 1 - team;
+  const lane = x < W/2 ? 'left' : 'right';
+  const tw = S.towers.find(t => t.team === enemy && t.kind === lane);
+  if (!tw.dead) return false;
+  const limit = team === 0 ? y >= 190 : y <= H - 190;
+  const notRiver = y < RIVER_TOP - 4 || y > RIVER_BOT + 4;
+  return limit && notRiver && !insideTower(x, y);
+}
+function insideTower(x, y) { return S.towers.some(t => !t.dead && Math.hypot(t.x-x, t.y-y) < t.r + 4); }
+
+// ---------- Helpers ----------
+function clamp(v,a,b){ return v<a?a:v>b?b:v; }
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+function sideOf(y){ return y < MID ? 1 : 0; } // 1 = top (enemy), 0 = bottom (player)
+
+function canTarget(att, tgt) {
+  if (tgt.dead) return false;
+  if (tgt.building) return true;
+  if (tgt.deploy > 0) return false;
+  if (att.c && att.c.buildings) return false;
+  if (tgt.air && !att.hitsAirFlag) return false;
+  return true;
+}
+
+function findTarget(u) {
+  const c = u.c;
+  const sight = Math.max(c.range + 70, 120);
+  let best = null, bd = Infinity;
+  if (!c.buildings) {
+    for (const o of S.units) {
+      if (o.team === u.team || o.dead || o.deploy > 0) continue;
+      if (o.air && !c.hitsAir) continue;
+      const d = dist(u,o) - o.r;
+      if (d < sight && d < bd) { bd = d; best = o; }
+    }
+  }
+  for (const t of S.towers) {
+    if (t.team === u.team || t.dead) continue;
+    const d = dist(u,t) - t.r;
+    if (d < sight && d < bd) { bd = d; best = t; }
+  }
+  if (best) return best;
+  // default: lane tower, else king
+  const lane = u.x < W/2 ? 'left' : 'right';
+  const enemy = 1 - u.team;
+  const lt = S.towers.find(t => t.team === enemy && t.kind === lane);
+  if (!lt.dead) return lt;
+  return S.towers.find(t => t.team === enemy && t.kind === 'king');
+}
+
+function waypoint(u, tgt) {
+  if (u.air) return tgt;
+  const inRiver = u.y > RIVER_TOP - 2 && u.y < RIVER_BOT + 2;
+  const us = sideOf(u.y), ts = sideOf(tgt.y);
+  if (inRiver) {
+    const b = BRIDGES.reduce((p,q) => Math.abs(q-u.x) < Math.abs(p-u.x) ? q : p);
+    const dirDown = ts === 0; // target below
+    return { x: b, y: dirDown ? RIVER_BOT + 8 : RIVER_TOP - 8 };
+  }
+  if (us === ts) return tgt;
+  const b = BRIDGES.reduce((p,q) => (Math.abs(q-u.x)+Math.abs(q-tgt.x)*0.5) < (Math.abs(p-u.x)+Math.abs(p-tgt.x)*0.5) ? q : p);
+  const bankY = us === 0 ? RIVER_BOT + 6 : RIVER_TOP - 6;
+  if (Math.abs(u.x - b) > 8 || Math.abs(u.y - bankY) > 30) return { x: b, y: bankY };
+  return { x: b, y: us === 0 ? RIVER_TOP - 10 : RIVER_BOT + 10 };
+}
+
+function damage(t, amt, src) {
+  if (t.dead) return;
+  t.hp -= amt;
+  t.flash = 0.12;
+  if (t.hp <= 0) {
+    t.hp = 0; t.dead = true;
+    S.fx.push({ kind:'boom', x:t.x, y:t.y, t:0, life: t.building ? 0.8 : 0.35, r: t.building ? 40 : 14 });
+    if (t.building) {
+      const winner = 1 - t.team;
+      if (t.kind === 'king') { S.side[winner].crowns = 3; endGame(winner); }
+      else { S.side[winner].crowns = Math.min(3, S.side[winner].crowns + 1); if (S.overtime) endGame(winner); }
+      updateCrowns();
+    }
+  }
+}
+
+function areaDamage(team, x, y, radius, dmg, hitsAir, towerFactor) {
+  for (const o of S.units) {
+    if (o.team === team || o.dead || o.deploy > 0) continue;
+    if (o.air && !hitsAir) continue;
+    if (Math.hypot(o.x-x, o.y-y) <= radius + o.r) damage(o, dmg);
+  }
+  for (const t of S.towers) {
+    if (t.team === team || t.dead) continue;
+    if (Math.hypot(t.x-x, t.y-y) <= radius + t.r) damage(t, dmg * (towerFactor ?? 1));
+  }
+}
+
+function attack(att, tgt, dmg, splash, projKind, hitsAir) {
+  if (projKind) {
+    S.projs.push({ kind: projKind, team: att.team, x: att.x, y: att.y, target: tgt, tx: tgt.x, ty: tgt.y, speed: projKind==='arrow'||projKind==='tower' ? 360 : 240, dmg, splash, hitsAir });
+  } else {
+    if (splash) areaDamage(att.team, tgt.x, tgt.y, splash, dmg, hitsAir);
+    else damage(tgt, dmg);
+    S.fx.push({ kind:'hit', x:tgt.x + (Math.random()-0.5)*8, y:tgt.y + (Math.random()-0.5)*8, t:0, life:0.18 });
+  }
+}
+
+// ---------- Update ----------
+function update(dt) {
+  if (S.over) return;
+  S.t += dt;
+  // time
+  S.timeLeft -= dt;
+  if (S.timeLeft <= 0) {
+    const [a,b] = [S.side[0].crowns, S.side[1].crowns];
+    if (!S.overtime && a === b) { S.overtime = true; S.timeLeft = 60; }
+    else if (a !== b) { endGame(a > b ? 0 : 1); return; }
+    else {
+      // overtime ended tied -> lowest tower hp decides
+      const lo = team => Math.min(...S.towers.filter(t => t.team===team && !t.dead).map(t => t.hp/t.maxHp));
+      const l0 = lo(0), l1 = lo(1);
+      endGame(Math.abs(l0-l1) < 1e-6 ? -1 : (l0 > l1 ? 0 : 1)); return;
+    }
+  }
+  // mana
+  const rate = (S.timeLeft <= 60 || S.overtime) ? 2/2.8 : 1/2.8;
+  for (let i=0;i<2;i++) {
+    const bonus = i===1 ? [0.8,1.0,1.15][difficulty] : 1;
+    S.side[i].mana = Math.min(MANA_MAX, S.side[i].mana + rate * dt * bonus);
+  }
+
+  // towers
+  for (const t of S.towers) {
+    if (t.dead) continue;
+    if (t.flash) t.flash = Math.max(0, t.flash - dt);
+    if (t.kind === 'king' && !kingActive(t)) continue;
+    t.cd -= dt;
+    if (t.cd > 0) continue;
+    let best=null, bd=Infinity;
+    for (const o of S.units) {
+      if (o.team === t.team || o.dead || o.deploy > 0) continue;
+      const d = dist(t,o) - o.r;
+      if (d <= t.range && d < bd) { bd = d; best = o; }
+    }
+    if (best) { t.cd = t.atk; attack(t, best, t.dmg, 0, 'tower', true); }
+  }
+
+  // units
+  for (const u of S.units) {
+    if (u.dead) continue;
+    if (u.flash) u.flash = Math.max(0, u.flash - dt);
+    if (u.deploy > 0) { u.deploy -= dt; continue; }
+    const c = u.c;
+    // retarget
+    if (!u.target || u.target.dead || (u.retarget = (u.retarget||0) - dt) <= 0) {
+      const cur = u.target;
+      const locked = cur && !cur.dead && dist(u,cur) - cur.r <= c.range + 2;
+      if (!locked) u.target = findTarget(u);
+      u.retarget = 0.25;
+    }
+    const tgt = u.target;
+    if (!tgt) continue;
+    const d = dist(u,tgt) - tgt.r - u.r * 0.3;
+    u.cd -= dt;
+    if (d <= c.range) {
+      if (u.cd <= 0) {
+        u.cd = c.atk;
+        u.swing = 0.15;
+        attack(u, tgt, c.dmg, c.splash, c.proj, c.hitsAir);
+      }
+    } else {
+      const wp = waypoint(u, tgt);
+      const dx = wp.x - u.x, dy = wp.y - u.y, L = Math.hypot(dx,dy) || 1;
+      const sp = c.speed * dt;
+      u.x += dx / L * sp; u.y += dy / L * sp;
+      if (Math.abs(dy) > 1) u.face = Math.sign(dy);
+    }
+    if (u.swing) u.swing = Math.max(0, u.swing - dt);
+  }
+
+  // separation & obstacles
+  const us = S.units;
+  for (let i=0;i<us.length;i++) {
+    const a = us[i]; if (a.dead) continue;
+    for (let j=i+1;j<us.length;j++) {
+      const b = us[j]; if (b.dead || a.air !== b.air) continue;
+      const dx = b.x-a.x, dy = b.y-a.y, d = Math.hypot(dx,dy), m = a.r + b.r;
+      if (d < m && d > 0.001) {
+        const push = (m - d) / 2, nx = dx/d, ny = dy/d;
+        const wa = a.c.hp > b.c.hp*2 ? 0.2 : b.c.hp > a.c.hp*2 ? 1.8 : 1;
+        a.x -= nx*push*wa; a.y -= ny*push*wa;
+        b.x += nx*push*(2-wa); b.y += ny*push*(2-wa);
+      } else if (d <= 0.001) { a.x += 0.5; }
+    }
+    if (!a.air) {
+      for (const t of S.towers) {
+        if (t.dead) continue;
+        const dx = a.x-t.x, dy = a.y-t.y, d = Math.hypot(dx,dy), m = a.r + t.r;
+        if (d < m && d > 0.001) { a.x = t.x + dx/d*m; a.y = t.y + dy/d*m; }
+      }
+      // keep ground units out of water
+      if (a.y > RIVER_TOP - a.r*0.5 && a.y < RIVER_BOT + a.r*0.5) {
+        const b = BRIDGES.reduce((p,q) => Math.abs(q-a.x) < Math.abs(p-a.x) ? q : p);
+        const lim = BRIDGE_HW - a.r*0.6;
+        a.x = clamp(a.x, b - lim, b + lim);
+      }
+    }
+    a.x = clamp(a.x, a.r, W - a.r);
+    a.y = clamp(a.y, a.r, H - a.r);
+  }
+  S.units = S.units.filter(u => !u.dead);
+
+  // projectiles
+  for (const p of S.projs) {
+    if (p.target && !p.target.dead) { p.tx = p.target.x; p.ty = p.target.y; }
+    const dx = p.tx - p.x, dy = p.ty - p.y, L = Math.hypot(dx,dy);
+    const sp = p.speed * dt;
+    if (L <= sp + 2) {
+      p.done = true;
+      if (p.kind === 'fireball') {
+        areaDamage(p.team, p.tx, p.ty, p.card.radius, p.card.dmg, true, p.card.towerFactor);
+        S.fx.push({ kind:'boom', x:p.tx, y:p.ty, t:0, life:0.5, r:p.card.radius, fire:true });
+      } else if (p.splash) {
+        areaDamage(p.team, p.tx, p.ty, p.splash, p.dmg, p.hitsAir);
+        S.fx.push({ kind:'boom', x:p.tx, y:p.ty, t:0, life:0.3, r:p.splash*0.8, fire: p.kind==='fire', magic: p.kind==='magic' });
+      } else if (p.target && !p.target.dead) {
+        damage(p.target, p.dmg);
+      }
+    } else { p.x += dx/L*sp; p.y += dy/L*sp; p.ang = Math.atan2(dy,dx); }
+  }
+  S.projs = S.projs.filter(p => !p.done);
+
+  for (const f of S.fx) f.t += dt;
+  S.fx = S.fx.filter(f => f.t < f.life);
+
+  aiUpdate(dt);
+}
+
+// ---------- AI ----------
+function aiUpdate(dt) {
+  const ai = S.ai, sd = S.side[1];
+  ai.next -= dt;
+  if (ai.next > 0) return;
+  ai.next = [1.6, 1.0, 0.6][difficulty] + Math.random() * 0.8;
+
+  const threats = S.units.filter(u => u.team === 0 && u.deploy <= 0 && u.y < 400);
+  const afford = sd.hand.map((k,i) => ({k,i,c:CARDS[k]})).filter(o => o.c.cost <= sd.mana);
+  if (!afford.length) return;
+
+  // Fireball on clusters / low-hp tower finish
+  const fb = afford.find(o => o.k === 'feuerball');
+  if (fb) {
+    let bestPt=null, bestVal=0;
+    for (const u of S.units) {
+      if (u.team !== 0) continue;
+      let val = 0;
+      for (const o of S.units) if (o.team===0 && Math.hypot(o.x-u.x,o.y-u.y) < 48) val += Math.min(o.hp, 520) / 100 * (CARDS[o.key].cost/ (CARDS[o.key].count||1));
+      if (val > bestVal) { bestVal = val; bestPt = u; }
+    }
+    for (const t of S.towers) if (t.team===0 && !t.dead && t.hp <= 208) { bestVal = 99; bestPt = t; }
+    if (bestPt && bestVal > 14) { playCard(1, fb.i, bestPt.x, bestPt.y + (bestPt.building ? 0 : 10)); return; }
+  }
+
+  if (threats.length) {
+    threats.sort((a,b) => a.y - b.y);
+    const th = threats[0];
+    const thAir = threats.some(t => t.air);
+    const units = afford.filter(o => !o.c.spell);
+    if (!units.length) return;
+    // prefer anti-air if air threat, avoid buildings-only for defense
+    let pick = units.filter(o => !o.c.buildings);
+    if (thAir) { const aa = pick.filter(o => o.c.hitsAir); if (aa.length) pick = aa; }
+    if (!pick.length) return;
+    const threatCost = threats.reduce((s,u) => s + CARDS[u.key].cost / (CARDS[u.key].count||1), 0);
+    pick.sort((a,b) => Math.abs(a.c.cost - threatCost) - Math.abs(b.c.cost - threatCost));
+    const o = difficulty === 0 ? pick[Math.random()*pick.length|0] : pick[0];
+    const ranged = o.c.range > 50;
+    let x = th.x, y = Math.min(th.y - (ranged ? 90 : 35), RIVER_TOP - 12);
+    y = Math.max(y, 70);
+    x = clamp(x, 14, W-14);
+    if (insideTower(x,y)) x += x < 180 ? 30 : -30;
+    playCard(1, o.i, x, y);
+    return;
+  }
+
+  // Attack: wait for enough mana
+  const want = difficulty === 2 ? 7 : 8;
+  if (sd.mana < want && !(ai.plan && S.t - ai.plan.t < 3)) return;
+  const units = afford.filter(o => !o.c.spell);
+  if (!units.length) return;
+  if (!ai.plan || S.t - ai.plan.t > 6) {
+    const p0 = S.towers.filter(t => t.team===0 && t.kind!=='king');
+    const alive = p0.filter(t=>!t.dead);
+    let laneT = alive.length ? alive.reduce((a,b) => a.hp < b.hp ? a : b) : p0[Math.random()*2|0];
+    if (Math.random() < 0.25 && alive.length === 2) laneT = alive[Math.random()*2|0];
+    ai.plan = { t: S.t, x: laneT.x, n: 0 };
+  }
+  const tank = units.find(o => o.c.hp >= 1400);
+  let o;
+  if (ai.plan.n === 0 && tank) o = tank;
+  else o = units.sort((a,b) => b.c.cost - a.c.cost)[0];
+  const behind = ai.plan.n > 0 && o.c.range > 50;
+  const x = clamp(ai.plan.x + (Math.random()-0.5)*20, 14, W-14);
+  const y = behind ? 230 : (o.c.speed < 40 ? 170 : 270);
+  if (playCard(1, o.i, x, y)) ai.plan.n++;
+}
+
+// ---------- Rendering ----------
+function draw() {
+  ctx.clearRect(0,0,W,H);
+  // grass
+  for (let y=0;y<H;y+=20) for (let x=0;x<W;x+=20) {
+    ctx.fillStyle = ((x+y)/20)%2 ? '#5fae4e' : '#66b655';
+    ctx.fillRect(x,y,20,20);
+  }
+  // own/enemy tint
+  ctx.fillStyle = 'rgba(226,72,61,0.06)'; ctx.fillRect(0,0,W,RIVER_TOP);
+  ctx.fillStyle = 'rgba(59,123,234,0.06)'; ctx.fillRect(0,RIVER_BOT,W,H-RIVER_BOT);
+  // paths
+  ctx.fillStyle = '#c9b27a88';
+  for (const b of BRIDGES) { ctx.fillRect(b-12, 120, 24, 400); }
+  ctx.fillRect(70, 100, 220, 16); ctx.fillRect(70, 524, 220, 16);
+  // river
+  const g = ctx.createLinearGradient(0,RIVER_TOP,0,RIVER_BOT);
+  g.addColorStop(0,'#3d8fd6'); g.addColorStop(0.5,'#5cb0f0'); g.addColorStop(1,'#3d8fd6');
+  ctx.fillStyle = g; ctx.fillRect(0,RIVER_TOP,W,RIVER_BOT-RIVER_TOP);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
+  for (let i=0;i<6;i++) { const x = ((S.t*20 + i*67) % (W+40)) - 20; ctx.beginPath(); ctx.moveTo(x,MID-4+i%3*4); ctx.lineTo(x+14,MID-4+i%3*4); ctx.stroke(); }
+  // bridges
+  for (const b of BRIDGES) {
+    ctx.fillStyle = '#8a5a2b'; ctx.fillRect(b-BRIDGE_HW, RIVER_TOP-6, BRIDGE_HW*2, RIVER_BOT-RIVER_TOP+12);
+    ctx.fillStyle = '#a8713c';
+    for (let y=RIVER_TOP-4;y<RIVER_BOT+4;y+=7) ctx.fillRect(b-BRIDGE_HW+2, y, BRIDGE_HW*2-4, 5);
+    ctx.fillStyle = '#5b3a1a'; ctx.fillRect(b-BRIDGE_HW-2, RIVER_TOP-6, 4, RIVER_BOT-RIVER_TOP+12); ctx.fillRect(b+BRIDGE_HW-2, RIVER_TOP-6, 4, RIVER_BOT-RIVER_TOP+12);
+  }
+
+  // placement overlay
+  if (S.selected >= 0 && !S.over) {
+    const key = S.side[0].hand[S.selected];
+    if (!CARDS[key].spell) {
+      ctx.fillStyle = 'rgba(255,40,40,0.18)';
+      ctx.fillRect(0,0,W,RIVER_BOT+4);
+      // pockets
+      for (const lane of ['left','right']) {
+        const tw = S.towers.find(t => t.team===1 && t.kind===lane);
+        if (tw.dead) { ctx.clearRect(0,0,0,0); ctx.fillStyle='rgba(120,255,120,0.18)'; const x0 = lane==='left'?0:W/2; ctx.fillRect(x0,190,W/2,RIVER_TOP-4-190); }
+      }
+    }
+    if (S.hover) {
+      const c = CARDS[key];
+      const ok = validDrop(0, key, S.hover.x, S.hover.y);
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = ok ? '#fff' : '#f44'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(S.hover.x, S.hover.y, c.spell ? c.radius : (c.r+6), 0, Math.PI*2); ctx.stroke();
+      if (!c.spell) { ctx.setLineDash([4,4]); ctx.beginPath(); ctx.arc(S.hover.x,S.hover.y,c.range+c.r,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); }
+      emoji(c.ico, S.hover.x, S.hover.y, 20);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // towers
+  for (const t of S.towers) drawTower(t);
+  // units (ground first, then air), sorted by y
+  const sorted = S.units.slice().sort((a,b) => (a.air - b.air) || (a.y - b.y));
+  for (const u of sorted) drawUnit(u);
+  // projectiles
+  for (const p of S.projs) drawProj(p);
+  // fx
+  for (const f of S.fx) drawFx(f);
+}
+
+function emoji(ch, x, y, size) {
+  ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(ch, x, y + 1);
+}
+
+function hpBar(x, y, w, frac, team, h=4) {
+  ctx.fillStyle = '#000a'; ctx.fillRect(x - w/2 - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = team === 0 ? '#4fa3ff' : '#ff5a4f';
+  ctx.fillRect(x - w/2, y, w * Math.max(0, frac), h);
+}
+
+function drawTower(t) {
+  const col = t.team === 0 ? '#3b7bea' : '#e2483d', dark = t.team === 0 ? '#244f9e' : '#9c2a22';
+  if (t.dead) {
+    ctx.fillStyle = '#6b6258'; ctx.beginPath(); ctx.arc(t.x, t.y, t.r*0.9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#4e463e'; for (let i=0;i<5;i++){ ctx.beginPath(); ctx.arc(t.x+Math.cos(i*1.3)*t.r*0.5, t.y+Math.sin(i*1.3)*t.r*0.5, 5, 0, Math.PI*2); ctx.fill(); }
+    return;
+  }
+  const s = t.r;
+  ctx.fillStyle = '#00000040'; ctx.beginPath(); ctx.ellipse(t.x, t.y + s*0.8, s, s*0.4, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#9b958c'; roundRect(t.x - s, t.y - s, s*2, s*2, 6); ctx.fill();
+  ctx.fillStyle = t.flash ? '#fff' : col; roundRect(t.x - s + 4, t.y - s + 4, s*2 - 8, s*2 - 8, 4); ctx.fill();
+  ctx.fillStyle = dark;
+  for (let i=0;i<4;i++) ctx.fillRect(t.x - s + 2 + i*(s*2-8)/3, t.y - s - 4, 6, 6);
+  const sleeping = t.kind === 'king' && !kingActive(t);
+  emoji(t.kind === 'king' ? (sleeping ? '😴' : '👑') : '🏹', t.x, t.y, t.kind==='king' ? 22 : 16);
+  const by = t.team === 0 ? t.y + s + 4 : t.y - s - 12;
+  hpBar(t.x, by, s*2, t.hp / t.maxHp, t.team, 5);
+  ctx.font = 'bold 9px system-ui'; ctx.fillStyle = '#fff'; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(Math.ceil(t.hp), t.x, by + 6);
+}
+
+function drawUnit(u) {
+  const col = u.team === 0 ? '#3b7bea' : '#e2483d';
+  const lift = u.air ? 14 : 0;
+  ctx.globalAlpha = u.deploy > 0 ? 0.45 : 1;
+  ctx.fillStyle = '#00000045'; ctx.beginPath(); ctx.ellipse(u.x, u.y + u.r*0.6, u.r*0.9, u.r*0.4, 0, 0, Math.PI*2); ctx.fill();
+  const y = u.y - lift + (u.air ? Math.sin(S.t*6 + u.x)*1.5 : 0);
+  ctx.fillStyle = u.flash ? '#fff' : col;
+  ctx.beginPath(); ctx.arc(u.x, y, u.r, 0, Math.PI*2); ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = '#0006'; ctx.stroke();
+  const sw = u.swing ? 1.15 : 1;
+  emoji(u.c.ico, u.x, y, u.r * 1.5 * sw);
+  if (u.deploy > 0) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(u.x, y, u.r + 3, -Math.PI/2, -Math.PI/2 + Math.PI*2*(1-u.deploy)); ctx.stroke();
+  } else if (u.hp < u.maxHp) {
+    hpBar(u.x, y - u.r - 6, Math.max(14, u.r*2), u.hp/u.maxHp, u.team, 3);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawProj(p) {
+  if (p.kind === 'fireball') {
+    ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffd34a'; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill();
+    return;
+  }
+  if (p.kind === 'arrow' || p.kind === 'tower') {
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.ang||0);
+    ctx.strokeStyle = p.kind==='tower' ? '#fff' : '#5a3a1a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(5,0); ctx.stroke();
+    ctx.restore(); return;
+  }
+  ctx.fillStyle = p.kind === 'fire' ? '#ff8c1a' : '#b46cff';
+  ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill();
+}
+
+function drawFx(f) {
+  const k = f.t / f.life;
+  if (f.kind === 'ring') {
+    ctx.strokeStyle = f.color; ctx.globalAlpha = 1-k; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 10 + k*30, 0, Math.PI*2); ctx.stroke(); ctx.globalAlpha = 1;
+  } else if (f.kind === 'hit') {
+    ctx.fillStyle = `rgba(255,255,255,${1-k})`; ctx.beginPath(); ctx.arc(f.x, f.y, 4 + k*6, 0, Math.PI*2); ctx.fill();
+  } else if (f.kind === 'boom') {
+    ctx.globalAlpha = 1-k;
+    ctx.fillStyle = f.magic ? '#c08cff' : f.fire ? '#ff9a2a' : '#ddd';
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.4 + k*0.7), 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// ---------- UI ----------
+const handEl = document.getElementById('hand');
+const nextIco = document.getElementById('nextIco');
+const manaFill = document.getElementById('manaFill');
+const manaNum = document.getElementById('manaNum');
+const timerEl = document.getElementById('timer');
+const ticks = document.getElementById('manaTicks');
+for (let i=0;i<MANA_MAX;i++) ticks.appendChild(document.createElement('span'));
+let cardEls = [];
+
+function buildHand() {
+  cardEls.forEach(e => e.remove());
+  cardEls = [];
+  for (let i=0;i<4;i++) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = '<div class="cost"></div><div class="ico"></div><div class="nm"></div>';
+    el.addEventListener('pointerdown', e => { e.preventDefault(); if (S.over) return; S.selected = S.selected === i ? -1 : i; refreshHand(); });
+    handEl.appendChild(el);
+    cardEls.push(el);
+  }
+  refreshHand();
+}
+function refreshHand() {
+  const sd = S.side[0];
+  cardEls.forEach((el,i) => {
+    const c = CARDS[sd.hand[i]];
+    el.querySelector('.cost').textContent = c.cost;
+    el.querySelector('.ico').textContent = c.ico;
+    el.querySelector('.nm').textContent = c.name;
+    el.classList.toggle('sel', S.selected === i);
+    el.classList.toggle('poor', sd.mana < c.cost);
+  });
+  nextIco.textContent = CARDS[sd.queue[0]].ico;
+}
+function updateCrowns() {
+  const st = n => '★'.repeat(n) + '☆'.repeat(3-n);
+  document.getElementById('myCrowns').textContent = 'Du ' + st(S.side[0].crowns);
+  document.getElementById('enemyCrowns').textContent = 'Gegner ' + st(S.side[1].crowns);
+}
+function updateHud() {
+  const m = S.side[0].mana;
+  manaFill.style.width = (m / MANA_MAX * 100) + '%';
+  manaNum.textContent = Math.floor(m);
+  const t = Math.max(0, Math.ceil(S.timeLeft));
+  timerEl.textContent = (S.overtime ? 'VZ ' : '') + Math.floor(t/60) + ':' + String(t%60).padStart(2,'0') + ((!S.overtime && S.timeLeft <= 60) ? ' ×2' : '');
+  timerEl.classList.toggle('ot', S.overtime || S.timeLeft <= 60);
+  cardEls.forEach((el,i) => el.classList.toggle('poor', m < CARDS[S.side[0].hand[i]].cost));
+}
+
+function toField(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+cv.addEventListener('pointermove', e => { if (S) S.hover = toField(e); });
+cv.addEventListener('pointerleave', () => { if (S) S.hover = null; });
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (!S || S.over || S.selected < 0) return;
+  const p = toField(e);
+  S.hover = p;
+  const key = S.side[0].hand[S.selected];
+  if (!validDrop(0, key, p.x, p.y)) { S.fx.push({ kind:'ring', x:p.x, y:p.y, t:0, life:0.3, color:'#f44' }); return; }
+  if (playCard(0, S.selected, p.x, p.y)) { S.selected = -1; refreshHand(); }
+});
+
+// ---------- Game flow ----------
+const overlay = document.getElementById('overlay');
+const ovBox = document.getElementById('ovBox');
+let running = false, last = 0;
+
+function endGame(winner) {
+  if (S.over) return;
+  S.over = true;
+  S.selected = -1;
+  setTimeout(() => {
+    const [a,b] = [S.side[0].crowns, S.side[1].crowns];
+    const title = winner === 0 ? '🏆 Sieg!' : winner === 1 ? '💀 Niederlage' : '🤝 Unentschieden';
+    ovBox.innerHTML = `<h1>${title}</h1><p style="font-size:22px">👑 ${a} : ${b} 👑</p>
+      <p>${winner===0 ? 'Stark gespielt!' : winner===1 ? 'Nächstes Mal klappt es!' : 'Ausgeglichener Kampf.'}</p>
+      <button id="againBtn">Nochmal</button>`;
+    overlay.classList.remove('hidden');
+    document.getElementById('againBtn').onclick = start;
+  }, 900);
+}
+
+function start() {
+  const d = document.querySelector('input[name=d]:checked');
+  if (d) difficulty = +d.value;
+  overlay.classList.add('hidden');
+  newGame();
+  updateCrowns();
+  resize();
+  if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); }
+}
+
+let hudT = 0;
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  hudT += dt;
+  if (hudT > 0.08) { hudT = 0; updateHud(); refreshHand(); }
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('startBtn').onclick = start;
+// draw idle field behind the start screen
+newGame(); resize(); draw(); updateHud();
+})();
+</script>
+</body>
+</html>
