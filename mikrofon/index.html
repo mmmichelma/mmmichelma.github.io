@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Live-Mikrofon</title>
+<style>
+  :root { --bg:#f4f4f6; --card:#fff; --text:#1b1b1f; --muted:#666; --accent:#e0245e; --ok:#1a9b4b; --line:#ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121214; --card:#1d1d21; --text:#f0f0f3; --muted:#9a9aa3; --line:#333; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:480px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:16px; }
+  button#toggle { width:100%; padding:22px; font-size:1.3rem; font-weight:700; border:0; border-radius:14px;
+    background:var(--ok); color:#fff; cursor:pointer; }
+  button#toggle.on { background:var(--accent); }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  label:first-child { margin-top:0; }
+  select, input[type=range] { width:100%; }
+  select { padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:1rem; }
+  .meter { height:18px; background:var(--bg); border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-top:14px; }
+  .meter div { height:100%; width:0; background:linear-gradient(90deg,#1a9b4b,#e8b400 70%,#e0245e); transition:width .05s linear; }
+  #status { margin-top:12px; color:var(--muted); min-height:1.2em; }
+  .row { display:flex; justify-content:space-between; align-items:center; }
+  .row span { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .check { display:flex; gap:10px; align-items:center; margin-top:14px; font-weight:400; }
+  ul { padding-left:20px; margin:0; color:var(--muted); }
+  li { margin-bottom:6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎤 Live-Mikrofon</h1>
+  <p class="sub">Was du ins Mikro sprichst, kommt sofort aus dem Lautsprecher.</p>
+
+  <div class="card">
+    <button id="toggle">▶ Start</button>
+    <div class="meter"><div id="level"></div></div>
+    <div id="status">Bereit.</div>
+  </div>
+
+  <div class="card">
+    <label for="input">Mikrofon</label>
+    <select id="input"><option value="">Standard-Mikrofon</option></select>
+
+    <label for="output">Lautsprecher</label>
+    <select id="output"><option value="">Standard-Lautsprecher</option></select>
+
+    <label for="volume" class="row">Lautstärke <span id="volVal">100 %</span></label>
+    <input type="range" id="volume" min="0" max="300" value="100">
+
+    <label class="check"><input type="checkbox" id="echo"> Rückkopplungs-Schutz (Echo-Unterdrückung)</label>
+  </div>
+
+  <div class="card">
+    <ul>
+      <li>Beim ersten Start fragt der Browser, ob er das Mikrofon benutzen darf. Bitte erlauben.</li>
+      <li>Fängt es an zu pfeifen, ist das eine Rückkopplung: Mikro weiter vom Lautsprecher weghalten, leiser drehen oder den Rückkopplungs-Schutz einschalten.</li>
+      <li>Bluetooth-Geräte haben immer eine kleine Verzögerung. Mit Kabel ist es am schnellsten.</li>
+      <li>Wenn du die Geräte wechselst, auf Stop und dann wieder auf Start drücken.</li>
+    </ul>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const btn = $('toggle'), inSel = $('input'), outSel = $('output'),
+        vol = $('volume'), volVal = $('volVal'), echo = $('echo'),
+        levelBar = $('level'), status = $('status');
+
+  let ctx, stream, gain, analyser, audioEl, raf, running = false;
+
+  function setStatus(t) { status.textContent = t; }
+
+  async function listDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const fill = (sel, kind, def) => {
+      const cur = sel.value;
+      sel.innerHTML = `<option value="">${def}</option>`;
+      devs.filter(d => d.kind === kind && d.deviceId && d.deviceId !== 'default').forEach((d, i) => {
+        const o = document.createElement('option');
+        o.value = d.deviceId;
+        o.textContent = d.label || `${kind === 'audioinput' ? 'Mikrofon' : 'Lautsprecher'} ${i + 1}`;
+        sel.appendChild(o);
+      });
+      if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+    };
+    fill(inSel, 'audioinput', 'Standard-Mikrofon');
+    fill(outSel, 'audiooutput', 'Standard-Lautsprecher');
+    // Auswahl des Lautsprechers geht nur in manchen Browsern (z. B. Chrome/Edge am PC)
+    const canPick = 'setSinkId' in HTMLMediaElement.prototype;
+    outSel.disabled = !canPick;
+    if (!canPick) outSel.options[0].textContent = 'Lautsprecher des Geräts';
+  }
+
+  function meter() {
+    const data = new Float32Array(analyser.fftSize);
+    const loop = () => {
+      analyser.getFloatTimeDomainData(data);
+      let peak = 0;
+      for (const v of data) peak = Math.max(peak, Math.abs(v));
+      levelBar.style.width = Math.min(100, peak * 100 * (vol.value / 100)) + '%';
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  async function start() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus('Dieser Browser kann nicht aufs Mikrofon zugreifen.');
+      return;
+    }
+    setStatus('Starte …');
+    const useEcho = echo.checked;
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: inSel.value ? { exact: inSel.value } : undefined,
+        echoCancellation: useEcho,
+        noiseSuppression: useEcho,
+        autoGainControl: false,
+        latency: 0
+      }
+    });
+
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    await ctx.resume();
+    const src = ctx.createMediaStreamSource(stream);
+    gain = ctx.createGain();
+    gain.gain.value = vol.value / 100;
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    src.connect(analyser);
+    src.connect(gain);
+
+    if (outSel.value && 'setSinkId' in HTMLMediaElement.prototype) {
+      // Ausgabe auf einen bestimmten Lautsprecher umleiten
+      const dest = ctx.createMediaStreamDestination();
+      gain.connect(dest);
+      audioEl = new Audio();
+      audioEl.srcObject = dest.stream;
+      await audioEl.setSinkId(outSel.value);
+      await audioEl.play();
+    } else {
+      gain.connect(ctx.destination);
+    }
+
+    running = true;
+    btn.textContent = '■ Stop';
+    btn.classList.add('on');
+    const ms = Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000);
+    setStatus('Läuft – sprich ins Mikrofon!' + (ms ? ` (Verzögerung ca. ${ms} ms)` : ''));
+    meter();
+    listDevices(); // jetzt sind die Gerätenamen sichtbar
+  }
+
+  function stop() {
+    cancelAnimationFrame(raf);
+    stream?.getTracks().forEach(t => t.stop());
+    if (audioEl) { audioEl.pause(); audioEl.srcObject = null; audioEl = null; }
+    ctx?.close();
+    ctx = stream = gain = analyser = null;
+    running = false;
+    levelBar.style.width = '0';
+    btn.textContent = '▶ Start';
+    btn.classList.remove('on');
+    setStatus('Gestoppt.');
+  }
+
+  btn.addEventListener('click', async () => {
+    if (running) return stop();
+    try { await start(); }
+    catch (e) {
+      stop();
+      setStatus(e.name === 'NotAllowedError'
+        ? 'Mikrofon wurde nicht erlaubt. Bitte in den Browser-Einstellungen freigeben.'
+        : 'Fehler: ' + e.message);
+    }
+  });
+
+  vol.addEventListener('input', () => {
+    volVal.textContent = vol.value + ' %';
+    if (gain) gain.gain.setTargetAtTime(vol.value / 100, gain.context.currentTime, 0.02);
+  });
+
+  const restart = () => { if (running) { stop(); btn.click(); } };
+  inSel.addEventListener('change', restart);
+  outSel.addEventListener('change', restart);
+  echo.addEventListener('change', restart);
+  navigator.mediaDevices?.addEventListener?.('devicechange', listDevices);
+  listDevices();
+})();
+</script>
+</body>
+</html>
