@@ -6,9 +6,9 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Live-Mikrofon</title>
 <style>
-  :root { --bg:#f4f4f6; --card:#fff; --text:#1b1b1f; --muted:#666; --accent:#e0245e; --ok:#1a9b4b; --line:#ddd; }
+  :root { --bg:#f4f4f6; --card:#fff; --text:#1b1b1f; --muted:#666; --accent:#e0245e; --ok:#1a9b4b; --blue:#2563eb; --line:#ddd; --hint:#fff7e0; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#121214; --card:#1d1d21; --text:#f0f0f3; --muted:#9a9aa3; --line:#333; }
+    :root { --bg:#121214; --card:#1d1d21; --text:#f0f0f3; --muted:#9a9aa3; --line:#333; --hint:#2b2614; }
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
@@ -16,11 +16,12 @@
   h1 { font-size:1.6rem; margin:0 0 4px; }
   p.sub { color:var(--muted); margin:0 0 20px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:16px; }
-  button#toggle { width:100%; padding:22px; font-size:1.3rem; font-weight:700; border:0; border-radius:14px;
-    background:var(--ok); color:#fff; cursor:pointer; }
+  button { font:inherit; cursor:pointer; }
+  button#toggle { width:100%; padding:22px; font-size:1.3rem; font-weight:700; border:0; border-radius:14px; background:var(--ok); color:#fff; }
   button#toggle.on { background:var(--accent); }
-  label { display:block; font-weight:600; margin:14px 0 6px; }
-  label:first-child { margin-top:0; }
+  button.sec { width:100%; margin-top:10px; padding:12px; border-radius:10px; border:1px solid var(--blue); background:transparent; color:var(--blue); font-weight:600; }
+  label { display:block; font-weight:600; margin:16px 0 6px; }
+  label.first { margin-top:0; }
   select, input[type=range] { width:100%; }
   select { padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:1rem; }
   .meter { height:18px; background:var(--bg); border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-top:14px; }
@@ -28,7 +29,9 @@
   #status { margin-top:12px; color:var(--muted); min-height:1.2em; }
   .row { display:flex; justify-content:space-between; align-items:center; }
   .row span { color:var(--muted); font-variant-numeric:tabular-nums; }
-  .check { display:flex; gap:10px; align-items:center; margin-top:14px; font-weight:400; }
+  .check { display:flex; gap:10px; align-items:center; font-weight:400; }
+  .hint { background:var(--hint); border-radius:10px; padding:12px; margin-top:10px; font-size:.95rem; line-height:1.4; }
+  .hint:empty { display:none; }
   ul { padding-left:20px; margin:0; color:var(--muted); }
   li { margin-bottom:6px; }
 </style>
@@ -45,11 +48,14 @@
   </div>
 
   <div class="card">
-    <label for="input">Mikrofon</label>
-    <select id="input"><option value="">Standard-Mikrofon</option></select>
-
-    <label for="output">Lautsprecher</label>
+    <label for="output" class="first">🔊 Ausgabegerät (Lautsprecher)</label>
     <select id="output"><option value="">Standard-Lautsprecher</option></select>
+    <button class="sec" id="pickOut" hidden>Lautsprecher auswählen …</button>
+    <button class="sec" id="scan">🔄 Geräte suchen</button>
+    <div class="hint" id="outHint"></div>
+
+    <label for="input">🎤 Mikrofon</label>
+    <select id="input"><option value="">Standard-Mikrofon</option></select>
 
     <label for="volume" class="row">Lautstärke <span id="volVal">100 %</span></label>
     <input type="range" id="volume" min="0" max="300" value="100">
@@ -59,10 +65,10 @@
 
   <div class="card">
     <ul>
-      <li>Beim ersten Start fragt der Browser, ob er das Mikrofon benutzen darf. Bitte erlauben.</li>
-      <li>Fängt es an zu pfeifen, ist das eine Rückkopplung: Mikro weiter vom Lautsprecher weghalten, leiser drehen oder den Rückkopplungs-Schutz einschalten.</li>
-      <li>Bluetooth-Geräte haben immer eine kleine Verzögerung. Mit Kabel ist es am schnellsten.</li>
-      <li>Wenn du die Geräte wechselst, auf Stop und dann wieder auf Start drücken.</li>
+      <li>Steck oder verbinde zuerst Mikro und Lautsprecher, dann auf <b>Geräte suchen</b> drücken.</li>
+      <li>Der Browser fragt, ob er das Mikrofon benutzen darf. Bitte erlauben, sonst zeigt er keine Gerätenamen.</li>
+      <li>Fängt es an zu pfeifen: Mikro weiter vom Lautsprecher weg, leiser drehen oder Rückkopplungs-Schutz einschalten.</li>
+      <li>Bluetooth hat immer eine kleine Verzögerung. Mit Kabel ist es am schnellsten.</li>
     </ul>
   </div>
 </main>
@@ -72,32 +78,87 @@
   const $ = id => document.getElementById(id);
   const btn = $('toggle'), inSel = $('input'), outSel = $('output'),
         vol = $('volume'), volVal = $('volVal'), echo = $('echo'),
-        levelBar = $('level'), status = $('status');
+        levelBar = $('level'), status = $('status'), outHint = $('outHint'),
+        scanBtn = $('scan'), pickBtn = $('pickOut');
 
-  let ctx, stream, gain, analyser, audioEl, raf, running = false;
+  const md = navigator.mediaDevices;
+  const canElemSink = 'setSinkId' in HTMLMediaElement.prototype;
+  const canCtxSink = typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
+  const canPicker = !!md?.selectAudioOutput;          // z. B. Firefox
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/.test(ua);
 
-  function setStatus(t) { status.textContent = t; }
+  let ctx, stream, gain, analyser, audioEl, raf, running = false, permitted = false;
+  let pickedOut = null; // Gerät aus dem Auswahl-Dialog (selectAudioOutput)
+
+  const setStatus = t => status.textContent = t;
+
+  async function ensurePermission() {
+    if (permitted) return;
+    const s = await md.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop());
+    permitted = true;
+  }
 
   async function listDevices() {
-    if (!navigator.mediaDevices?.enumerateDevices) return;
-    const devs = await navigator.mediaDevices.enumerateDevices();
-    const fill = (sel, kind, def) => {
+    if (!md?.enumerateDevices) return;
+    const devs = await md.enumerateDevices();
+    const fill = (sel, kind, def, word) => {
       const cur = sel.value;
       sel.innerHTML = `<option value="">${def}</option>`;
-      devs.filter(d => d.kind === kind && d.deviceId && d.deviceId !== 'default').forEach((d, i) => {
+      let n = 0;
+      devs.filter(d => d.kind === kind && d.deviceId && d.deviceId !== 'default').forEach(d => {
         const o = document.createElement('option');
         o.value = d.deviceId;
-        o.textContent = d.label || `${kind === 'audioinput' ? 'Mikrofon' : 'Lautsprecher'} ${i + 1}`;
+        o.textContent = d.label || `${word} ${++n}`;
         sel.appendChild(o);
       });
+      if (kind === 'audiooutput' && pickedOut && ![...sel.options].some(o => o.value === pickedOut.deviceId)) {
+        const o = document.createElement('option');
+        o.value = pickedOut.deviceId; o.textContent = pickedOut.label || 'Ausgewählter Lautsprecher';
+        sel.appendChild(o);
+      }
       if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+      return sel.options.length - 1;
     };
-    fill(inSel, 'audioinput', 'Standard-Mikrofon');
-    fill(outSel, 'audiooutput', 'Standard-Lautsprecher');
-    // Auswahl des Lautsprechers geht nur in manchen Browsern (z. B. Chrome/Edge am PC)
-    const canPick = 'setSinkId' in HTMLMediaElement.prototype;
-    outSel.disabled = !canPick;
-    if (!canPick) outSel.options[0].textContent = 'Lautsprecher des Geräts';
+    fill(inSel, 'audioinput', 'Standard-Mikrofon', 'Mikrofon');
+    const outs = fill(outSel, 'audiooutput', 'Standard-Lautsprecher', 'Lautsprecher');
+    updateOutHint(outs);
+  }
+
+  function updateOutHint(outs) {
+    const canSink = canElemSink || canCtxSink;
+    pickBtn.hidden = !canPicker;
+    outSel.disabled = !canSink;
+    if (!canSink) {
+      outSel.options[0].textContent = 'Wird über das Handy/System gewählt';
+      outHint.innerHTML = isIOS
+        ? '<b>iPhone/iPad:</b> Apple lässt Webseiten das Ausgabegerät nicht wählen. So geht es trotzdem: Wisch von oben rechts nach unten (Kontrollzentrum), tipp im Musik-Feld auf das <b>AirPlay-Symbol</b> (Dreieck mit Kreisen) und wähle dort deinen Lautsprecher. Am besten, während das Mikrofon läuft.'
+        : isAndroid
+        ? '<b>Android:</b> Dein Browser lässt die Auswahl hier nicht zu. Verbinde den Lautsprecher per Bluetooth, dann spielt das Handy automatisch darüber. Oder: Lautstärketaste drücken → auf die drei Punkte bzw. „Ausgabe“ tippen → Lautsprecher wählen. Tipp: In <b>Chrome</b> öffnen.'
+        : 'Dein Browser kann das Ausgabegerät nicht wählen. Öffne die Seite bitte in <b>Chrome</b> oder <b>Edge</b>, oder stell den Lautsprecher in den System-Einstellungen als Standard ein.';
+    } else if (!permitted) {
+      outHint.innerHTML = 'Drück auf <b>Geräte suchen</b> und erlaube den Mikrofon-Zugriff, dann erscheinen hier deine Lautsprecher.';
+    } else if (outs === 0 && !canPicker) {
+      outHint.innerHTML = isAndroid
+        ? 'Dein Handy meldet keine weiteren Lautsprecher. Verbinde den Lautsprecher per Bluetooth und drück nochmal auf <b>Geräte suchen</b>. Ein verbundener Bluetooth-Lautsprecher wird meist automatisch benutzt.'
+        : 'Kein weiterer Lautsprecher gefunden. Ist er eingeschaltet und verbunden? Dann nochmal auf <b>Geräte suchen</b> drücken.';
+    } else if (outs === 0 && canPicker) {
+      outHint.innerHTML = 'Drück auf <b>Lautsprecher auswählen …</b>, um dein Ausgabegerät zu wählen.';
+    } else {
+      outHint.innerHTML = '';
+    }
+  }
+
+  async function applySink() {
+    const id = outSel.value;
+    if (!ctx) return;
+    if (canCtxSink) {
+      await ctx.setSinkId(id);          // '' = Standard
+    } else if (audioEl && canElemSink) {
+      await audioEl.setSinkId(id);
+    }
   }
 
   function meter() {
@@ -113,21 +174,16 @@
   }
 
   async function start() {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setStatus('Dieser Browser kann nicht aufs Mikrofon zugreifen.');
-      return;
-    }
+    if (!md?.getUserMedia) { setStatus('Dieser Browser kann nicht aufs Mikrofon zugreifen.'); return; }
     setStatus('Starte …');
     const useEcho = echo.checked;
-    stream = await navigator.mediaDevices.getUserMedia({
+    stream = await md.getUserMedia({
       audio: {
         deviceId: inSel.value ? { exact: inSel.value } : undefined,
-        echoCancellation: useEcho,
-        noiseSuppression: useEcho,
-        autoGainControl: false,
-        latency: 0
+        echoCancellation: useEcho, noiseSuppression: useEcho, autoGainControl: false, latency: 0
       }
     });
+    permitted = true;
 
     ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
     await ctx.resume();
@@ -139,17 +195,17 @@
     src.connect(analyser);
     src.connect(gain);
 
-    if (outSel.value && 'setSinkId' in HTMLMediaElement.prototype) {
-      // Ausgabe auf einen bestimmten Lautsprecher umleiten
+    if (!canCtxSink && canElemSink) {
+      // Umweg über ein Audio-Element, damit der Lautsprecher gewählt werden kann
       const dest = ctx.createMediaStreamDestination();
       gain.connect(dest);
       audioEl = new Audio();
       audioEl.srcObject = dest.stream;
-      await audioEl.setSinkId(outSel.value);
       await audioEl.play();
     } else {
       gain.connect(ctx.destination);
     }
+    await applySink();
 
     running = true;
     btn.textContent = '■ Stop';
@@ -157,7 +213,7 @@
     const ms = Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000);
     setStatus('Läuft – sprich ins Mikrofon!' + (ms ? ` (Verzögerung ca. ${ms} ms)` : ''));
     meter();
-    listDevices(); // jetzt sind die Gerätenamen sichtbar
+    listDevices();
   }
 
   function stop() {
@@ -173,15 +229,34 @@
     setStatus('Gestoppt.');
   }
 
+  const errText = e => e.name === 'NotAllowedError'
+    ? 'Mikrofon wurde nicht erlaubt. Bitte in den Browser-Einstellungen freigeben.'
+    : 'Fehler: ' + e.message;
+
   btn.addEventListener('click', async () => {
     if (running) return stop();
-    try { await start(); }
-    catch (e) {
-      stop();
-      setStatus(e.name === 'NotAllowedError'
-        ? 'Mikrofon wurde nicht erlaubt. Bitte in den Browser-Einstellungen freigeben.'
-        : 'Fehler: ' + e.message);
-    }
+    try { await start(); } catch (e) { stop(); setStatus(errText(e)); }
+  });
+
+  scanBtn.addEventListener('click', async () => {
+    try { await ensurePermission(); await listDevices(); setStatus('Geräte aktualisiert.'); }
+    catch (e) { setStatus(errText(e)); }
+  });
+
+  pickBtn.addEventListener('click', async () => {
+    try {
+      await ensurePermission();
+      pickedOut = await md.selectAudioOutput();
+      await listDevices();
+      outSel.value = pickedOut.deviceId;
+      await applySink();
+      setStatus('Lautsprecher gewählt: ' + (pickedOut.label || 'OK'));
+    } catch (e) { if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') setStatus(errText(e)); }
+  });
+
+  outSel.addEventListener('change', async () => {
+    try { await applySink(); if (running) setStatus('Ausgabe gewechselt.'); }
+    catch (e) { setStatus('Lautsprecher konnte nicht gewechselt werden: ' + e.message); }
   });
 
   vol.addEventListener('input', () => {
@@ -191,10 +266,13 @@
 
   const restart = () => { if (running) { stop(); btn.click(); } };
   inSel.addEventListener('change', restart);
-  outSel.addEventListener('change', restart);
   echo.addEventListener('change', restart);
-  navigator.mediaDevices?.addEventListener?.('devicechange', listDevices);
-  listDevices();
+  md?.addEventListener?.('devicechange', listDevices);
+
+  // Wenn die Erlaubnis schon da ist, gleich die Namen anzeigen
+  navigator.permissions?.query({ name: 'microphone' })
+    .then(p => { if (p.state === 'granted') permitted = true; }).catch(() => {})
+    .finally(listDevices);
 })();
 </script>
 </body>
