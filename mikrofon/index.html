@@ -32,6 +32,11 @@
   .check { display:flex; gap:10px; align-items:center; font-weight:400; }
   .hint { background:var(--hint); border-radius:10px; padding:12px; margin-top:10px; font-size:.95rem; line-height:1.4; }
   .hint:empty { display:none; }
+  .app { border:2px solid var(--ok); }
+  .app h2 { font-size:1.15rem; margin:0 0 6px; }
+  .app p { margin:0 0 12px; color:var(--muted); line-height:1.4; }
+  a.dl { display:block; text-align:center; padding:16px; border-radius:12px; background:var(--ok); color:#fff; font-weight:700; font-size:1.1rem; text-decoration:none; }
+  .app ol { margin:12px 0 0; padding-left:20px; color:var(--muted); font-size:.95rem; }
   ul { padding-left:20px; margin:0; color:var(--muted); }
   li { margin-bottom:6px; }
 </style>
@@ -40,6 +45,17 @@
 <main>
   <h1>🎤 Live-Mikrofon</h1>
   <p class="sub">Was du ins Mikro sprichst, kommt sofort aus dem Lautsprecher.</p>
+
+  <div class="card app" id="androidApp">
+    <h2>📱 Android-Handy? Nimm die App!</h2>
+    <p>Im Browser lässt Android den Lautsprecher nicht auswählen. In der App geht das.</p>
+    <a class="dl" href="live-mikrofon.apk" download>⬇ App herunterladen (Android)</a>
+    <ol>
+      <li>Auf den Knopf tippen und die Datei herunterladen.</li>
+      <li>Die Datei öffnen. Fragt das Handy, ob „unbekannte Apps“ installiert werden dürfen: einmal erlauben.</li>
+      <li>„Live-Mikrofon“ öffnen, Mikrofon erlauben, Lautsprecher auswählen, Start.</li>
+    </ol>
+  </div>
 
   <div class="card">
     <button id="toggle">▶ Start</button>
@@ -88,6 +104,7 @@
   const ua = navigator.userAgent;
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isAndroid = /Android/.test(ua);
+  if (!isAndroid) $('androidApp').querySelector('h2').textContent = '📱 Für Android-Handys gibt es eine App';
 
   let ctx, stream, gain, analyser, audioEl, raf, running = false, permitted = false;
   let pickedOut = null; // Gerät aus dem Auswahl-Dialog (selectAudioOutput)
@@ -136,7 +153,7 @@
       outHint.innerHTML = isIOS
         ? '<b>iPhone/iPad:</b> Apple lässt Webseiten das Ausgabegerät nicht wählen. So geht es trotzdem: Wisch von oben rechts nach unten (Kontrollzentrum), tipp im Musik-Feld auf das <b>AirPlay-Symbol</b> (Dreieck mit Kreisen) und wähle dort deinen Lautsprecher. Am besten, während das Mikrofon läuft.'
         : isAndroid
-        ? '<b>Android:</b> Dein Browser lässt die Auswahl hier nicht zu. Verbinde den Lautsprecher per Bluetooth, dann spielt das Handy automatisch darüber. Oder: Lautstärketaste drücken → auf die drei Punkte bzw. „Ausgabe“ tippen → Lautsprecher wählen. Tipp: In <b>Chrome</b> öffnen.'
+        ? '<b>Android:</b> Dein Browser lässt die Auswahl hier nicht zu. Verbinde den Lautsprecher per Bluetooth, dann spielt das Handy automatisch darüber. Oder: Lautstärketaste drücken → auf die drei Punkte bzw. „Ausgabe“ tippen → Lautsprecher wählen. Am einfachsten: oben die <b>App herunterladen</b>, dort kannst du den Lautsprecher auswählen.'
         : 'Dein Browser kann das Ausgabegerät nicht wählen. Öffne die Seite bitte in <b>Chrome</b> oder <b>Edge</b>, oder stell den Lautsprecher in den System-Einstellungen als Standard ein.';
     } else if (!permitted) {
       outHint.innerHTML = 'Drück auf <b>Geräte suchen</b> und erlaube den Mikrofon-Zugriff, dann erscheinen hier deine Lautsprecher.';
