@@ -1,0 +1,46 @@
+name: Live-Mikrofon APK
+
+on:
+  push:
+    paths:
+      - 'mikrofon-android/**'
+      - '.github/workflows/mikrofon-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mikrofon-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: APK bauen
+        run: gradle -p mikrofon-android assembleDebug --no-daemon
+      - name: APK umbenennen
+        run: cp mikrofon-android/app/build/outputs/apk/debug/app-debug.apk live-mikrofon.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-mikrofon-apk
+          path: live-mikrofon.apk
+      # Nur auf master: APK auf die Website legen (mikrofon/live-mikrofon.apk)
+      - name: APK auf die Website legen
+        if: github.ref == 'refs/heads/master'
+        run: |
+          cp live-mikrofon.apk mikrofon/live-mikrofon.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mikrofon/live-mikrofon.apk
+          git diff --cached --quiet || git commit -m "Live-Mikrofon: APK aktualisiert"
+          git push
