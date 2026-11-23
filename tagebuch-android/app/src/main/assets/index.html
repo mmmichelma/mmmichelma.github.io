@@ -120,17 +120,18 @@ nav.tab button.on{color:var(--acc);font-weight:700}
  </div>
  <div class="card" id="syncCard"><h2>Online-Sync ☁️</h2>
   <div id="syncOff">
-   <p class="note"><b>Du richtest ein (einmalig):</b> Füg hier die Firebase-Konfiguration ein (Anleitung bekommst du von Claude) und starte euer gemeinsames Tagebuch.</p>
-   <textarea id="cfgIn" placeholder="const firebaseConfig = { apiKey: &quot;…&quot;, projectId: &quot;…&quot;, … }"></textarea>
-   <button class="btn" id="cfgStart">Gemeinsames Tagebuch starten</button>
-   <p class="note" style="margin-top:16px"><b>Luna:</b> Einladung einfügen, die du ihr geschickt hast.</p>
-   <textarea id="invIn" placeholder="TB1.…" style="min-height:60px"></textarea>
+   <p class="note">Verbindet eure beiden Handys übers Internet. Einer startet, der andere tritt mit dem Code bei.</p>
+   <label>Wer bist du?</label>
+   <div class="seg" id="meSeg"><button data-w="Marc" class="on">Marc</button><button data-w="Luna">Luna</button></div>
+   <button class="btn" id="cStart">☁️ Verbinden &amp; Code für Luna erstellen</button>
+   <p class="note" style="margin-top:18px"><b>Du hast einen Code bekommen?</b> Hier einfügen:</p>
+   <textarea id="invIn" placeholder="TB2.…" style="min-height:60px"></textarea>
    <button class="btn g" id="invJoin">Beitreten</button>
   </div>
   <div id="syncOn" class="hide">
    <p style="margin:0 0 4px;font-weight:700" id="syncState"></p>
    <p class="note" id="syncLast"></p>
-   <button class="btn" id="invSend">💌 Einladung an Luna schicken</button>
+   <button class="btn" id="invSend">💌 Code an Luna schicken</button>
    <textarea id="invOut" class="hide" readonly style="margin-top:8px;min-height:60px"></textarea>
    <button class="btn g" id="syncNow">🔄 Jetzt synchronisieren</button>
    <button class="btn r" id="syncOffBtn">Sync auf diesem Handy trennen</button>
@@ -261,6 +262,7 @@ function render(){
   const today=E.filter(e=>e.date===t);
   $('slots').innerHTML=['Marc','Luna'].map(w=>{const e=today.find(x=>x.who===w);
    return e?`<button class="slot has" data-e="${e.id}"><div class="who ${w[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${w}</div>${e.text?`<div class="tx">${esc(e.text)}</div>`:''}${e.photo?`<img src="${e.photo}" alt="">`:''}</button>`
+   :(Sync.on&&w!==Sync.me)?`<div class="slot"><div class="who ${w[0]}">${w}</div><div class="add"><span>⏳</span>Noch nichts von ${w}</div></div>`
    :`<button class="slot" data-new="${w}"><div class="who ${w[0]}">${w}</div><div class="add"><span>＋</span>Heute schreiben</div></button>`}).join('');
   // Weißt du noch?
   const m=byDate();let fd=null,lab='';
@@ -323,12 +325,14 @@ function drawEd(){
  $('edPhotoBtn').textContent=photo?'🗑️ Foto entfernen':'📷 Foto auswählen';
 }
 function openEd(e,w){
+ if(e&&!Sync.canEdit(e)){openDay(e.date);return}
  cur=e||null;photo=e?e.photo||null:null;mood=e?e.mood:null;who=e?e.who:(w||'Marc');
  $('edTitle').textContent=e?'Eintrag bearbeiten':'Neuer Eintrag';
  $('edDate').value=e?e.date:todayISO();$('edDate').max=todayISO();
  $('edText').value=e?e.text||'':'';$('edText').oninput();
  $('edQ').textContent=promptFor($('edDate').value);
  $('edDel').classList.toggle('hide',!e);
+ if(Sync.on){who=Sync.me}$('edWho').classList.toggle('hide',Sync.on);
  drawEd();openS('ed');
 }
 $('edPhotoBtn').onclick=()=>{if(photo){photo=null;drawEd()}else $('edFile').click()};
@@ -351,16 +355,16 @@ $('edSave').onclick=()=>{
  if(!text&&!photo){$('edText').focus();return}
  // Pro Person nur ein Eintrag pro Tag: vorhandenen überschreiben
  let e=cur||E.find(x=>x.date===date&&x.who===who);
- if(e&&cur&&(e.date!==date||e.who!==who)){const clash=E.find(x=>x!==e&&x.date===date&&x.who===who);if(clash){E=E.filter(x=>x!==clash);del(clash.id);addTomb(clash.id);Sync.dirty(clash.id)}}
+ if(e&&cur&&(e.date!==date||e.who!==who)){const clash=E.find(x=>x!==e&&x.date===date&&x.who===who);if(clash){E=E.filter(x=>x!==clash);del(clash.id);addTomb(clash.id);Sync.dirty()}}
  if(!e){e={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6)};E.push(e)}
- Object.assign(e,{date,who,text,photo,mood,ts:Date.now()});
- put(e);Sync.dirty(e.id);closeS();render();
+ Object.assign(e,{date,who,text,photo,mood,ts:Date.now()});if(Sync.on)e.o=Sync.me;
+ put(e);Sync.dirty();closeS();render();
 };
 let delArm=false;
 $('edDel').onclick=()=>{
  if(!delArm){delArm=true;$('edDel').textContent='Wirklich löschen? Nochmal tippen';setTimeout(()=>{delArm=false;$('edDel').textContent='Löschen'},3000);return}
  delArm=false;$('edDel').textContent='Löschen';
- E=E.filter(x=>x!==cur);del(cur.id);addTomb(cur.id);Sync.dirty(cur.id);closeS();render();
+ E=E.filter(x=>x!==cur);del(cur.id);addTomb(cur.id);Sync.dirty();closeS();render();
 };
 function alertBox(t){$('bkMsg').textContent=t;$('edPhotoBtn').textContent=t}
 
@@ -409,7 +413,7 @@ function mergeData(txt){
    E.push(e);put(e);neu++;
   }else if((e.ts||0)>(m.ts||0)){Object.assign(m,e);put(m);akt++}
  }
- if(typeof Sync!=="undefined"&&Sync.on){for(const e of d.entries)Sync.dirty(e.id,true);Sync.run()}
+ if(typeof Sync!=="undefined"&&Sync.on)Sync.dirty();
  render();return {neu,akt};
 }
 // Vom Android-Teil aufgerufen, wenn eine Sync-Datei geöffnet wurde
@@ -438,87 +442,82 @@ $('impFile').onchange=()=>{
  };r.readAsText(f);
 };
 
-/* ---------- Online-Sync (Firebase Firestore, REST) ---------- */
+/* ---------- Online-Sync (jsonblob.com, ohne Konto) ----------
+   Jedes Handy hat einen eigenen Online-Speicher für SEINE Einträge (+ ein Speicher pro Foto).
+   Jedes Handy liest den Speicher des anderen. So gibt es nie Konflikte. */
 const Sync=(()=>{
- const CK='tagebuch-cloud',QK='tagebuch-dirty';
+ const CK='tagebuch-cloud2',FK='tagebuch-cloud2-dirty',API='https://jsonblob.com/api/jsonBlob';
  let C=null,busy=false,again=false,timer=null,poll=null,state='off',err='';
  try{C=JSON.parse(localStorage.getItem(CK))}catch(e){}
  const saveC=()=>{try{C?localStorage.setItem(CK,JSON.stringify(C)):localStorage.removeItem(CK)}catch(e){}};
- const getQ=()=>{try{return JSON.parse(localStorage.getItem(QK))||[]}catch(e){return []}};
- const setQ=q=>{try{localStorage.setItem(QK,JSON.stringify(q))}catch(e){}};
- const base=()=>`https://firestore.googleapis.com/v1/projects/${C.p}/databases/(default)/documents`;
- const docName=id=>`projects/${C.p}/databases/(default)/documents/tagebuecher/${C.r}/eintraege/${id}`;
- function enc(e){return {date:{stringValue:e.date||''},who:{stringValue:e.who||''},text:{stringValue:e.text||''},photo:{stringValue:e.photo||''},
-  mood:e.mood==null?{nullValue:null}:{integerValue:String(e.mood)},ts:{integerValue:String(e.ts||0)},deleted:{booleanValue:!!e.deleted}}}
- function dec(name,f){const g=k=>f[k]||{};const id=name.split('/').pop();
-  const e={id,date:g('date').stringValue||'',who:g('who').stringValue||'',text:g('text').stringValue||'',photo:g('photo').stringValue||null,
-   mood:g('mood').integerValue!=null?+g('mood').integerValue:null,ts:+(g('ts').integerValue||0),deleted:!!g('deleted').booleanValue};
-  return {e,srv:g('srv').timestampValue||''}}
- async function call(url,body){
-  const r=await fetch(url+(url.includes('?')?'&':'?')+'key='+encodeURIComponent(C.k),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const t=await r.text();let j=null;try{j=JSON.parse(t)}catch(x){}
-  if(!r.ok){const m=(j&&(j[0]||j).error&&(j[0]||j).error.message)||('HTTP '+r.status);const s=(j&&(j[0]||j).error&&(j[0]||j).error.status)||'';throw new Error(s==='PERMISSION_DENIED'?'Zugriff verweigert – sind die Firestore-Regeln eingefügt?':s==='NOT_FOUND'||/database.*not exist/i.test(m)?'Firestore-Datenbank fehlt – im Firebase-Projekt anlegen.':/API key/i.test(m)?'API-Key ungültig.':m)}
-  return j;
+ const isDirty=()=>{try{return localStorage.getItem(FK)==='1'}catch(e){return true}};
+ const setDirty=v=>{try{localStorage.setItem(FK,v?'1':'0')}catch(e){}};
+ async function req(method,url,body){
+  const r=await fetch(url,{method,headers:{'Content-Type':'application/json','Accept':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+  if(r.status===404)throw new Error('404');
+  if(r.status===413)throw new Error('zu groß');
+  if(r.status===429)throw new Error('Zu viele Anfragen – kurz warten.');
+  if(!r.ok)throw new Error('Dienst antwortet nicht (HTTP '+r.status+')');
+  return r;
  }
+ async function create(obj){
+  const r=await req('POST',API,obj);
+  let id=((r.headers.get('Location')||r.headers.get('X-jsonblob')||'').split('/').pop()||'').trim();
+  if(!id){try{const j=await r.json();id=j&&(j.id||j.blobId)}catch(e){}}
+  if(!id)throw new Error('Der Sync-Dienst hat keine ID geliefert.');
+  return id;
+ }
+ const delBlob=id=>{try{fetch(API+'/'+id,{method:'DELETE'}).catch(()=>{})}catch(e){}};
+ function hash(t){let h=5381,step=Math.max(1,Math.floor(t.length/4000));for(let i=0;i<t.length;i+=step)h=((h<<5)+h+t.charCodeAt(i))|0;return t.length+':'+h}
+ function smaller(dataUrl){return new Promise(res=>{const img=new Image();img.onload=()=>{const s=Math.min(1,720/Math.max(img.width,img.height));
+  const c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.6))};img.onerror=()=>res(dataUrl);img.src=dataUrl})}
+ const mine=()=>E.filter(e=>(e.o||C.me)===C.me);
  async function push(){
-  let q=getQ();if(!q.length)return 0;
-  const dead=new Set(tombs());let writes=[],size=0,sent=0;
-  const flush=async()=>{if(!writes.length)return;await call(base()+':commit',{writes});sent+=writes.length;
-   const done=new Set(writes.map(w=>w.update.name.split('/').pop()));q=getQ().filter(id=>!done.has(id));setQ(q);writes=[];size=0};
-  for(const id of q.slice()){
-   const e=E.find(x=>x.id===id);
-   const rec=e?e:(dead.has(id)?{id,deleted:true,ts:Date.now()}:null);
-   if(!rec){setQ(getQ().filter(x=>x!==id));continue}
-   const w={update:{name:docName(id),fields:enc(rec)},updateTransforms:[{fieldPath:'srv',setToServerValue:'REQUEST_TIME'}]};
-   const sz=(rec.photo||'').length+500;
-   if(size+sz>4e6||writes.length>=100)await flush();
-   writes.push(w);size+=sz;
+  if(!isDirty())return;
+  for(const e of mine()){
+   if(e.photo){
+    const h=hash(e.photo);if(e.phId&&e.phH===h)continue;
+    if(e.phId)delBlob(e.phId);
+    let id;try{id=await create({d:e.photo})}catch(x){if(/groß/.test(x.message))id=await create({d:await smaller(e.photo)});else throw x}
+    e.phId=id;e.phH=h;e.o=C.me;put(e);
+   }else if(e.phId){delBlob(e.phId);e.phId=null;e.phH=null;put(e)}
   }
-  await flush();return sent;
- }
- function apply(r){
-  const local=E.find(x=>x.id===r.id);
-  if(r.deleted){
-   if(local&&(local.ts||0)<=r.ts){E=E.filter(x=>x!==local);del(local.id)}
-   addTomb(r.id);return !!local;
-  }
-  if(new Set(tombs()).has(r.id))return false;
-  if(local){if(r.ts>(local.ts||0)){Object.assign(local,r);delete local.deleted;put(local);return true}return false}
-  // gleiche Person, gleicher Tag, andere ID -> neuere gewinnt
-  const same=E.find(x=>x.date===r.date&&x.who===r.who);
-  const rec=Object.assign({},r);delete rec.deleted;
-  if(same){
-   if(r.ts>(same.ts||0)){E=E.filter(x=>x!==same);del(same.id);addTomb(same.id);dirty(same.id,true);E.push(rec);put(rec);return true}
-   addTomb(r.id);dirty(r.id,true);return false;
-  }
-  E.push(rec);put(rec);return true;
+  const idx={app:'unser-tagebuch',v:1,owner:C.me,at:Date.now(),
+   entries:mine().map(e=>({id:e.id,date:e.date,who:e.who,text:e.text||'',mood:e.mood==null?null:e.mood,ts:e.ts||0,ph:e.photo?e.phId:null}))};
+  await req('PUT',API+'/'+C.mine,idx);
+  setDirty(false);
  }
  async function pull(){
-  let changed=0;
-  for(let round=0;round<200;round++){
-   const res=await call(`${base()}/tagebuecher/${C.r}:runQuery`,{structuredQuery:{from:[{collectionId:'eintraege'}],
-    where:{fieldFilter:{field:{fieldPath:'srv'},op:'GREATER_THAN',value:{timestampValue:C.last||'1970-01-01T00:00:00Z'}}},
-    orderBy:[{field:{fieldPath:'srv'},direction:'ASCENDING'}],limit:50}});
-   const docs=(res||[]).filter(x=>x.document);
-   for(const x of docs){const d=dec(x.document.name,x.document.fields||{});if(apply(d.e))changed++;if(d.srv)C.last=d.srv}
-   saveC();if(docs.length<50)break;
+  let r;try{r=await req('GET',API+'/'+C.theirs)}catch(x){if(x.message==='404')throw new Error('Verbindung verloren – der Speicher von '+C.other+' existiert nicht mehr.');throw x}
+  const idx=await r.json();const list=(idx&&idx.entries)||[];
+  let changed=0;const ids=new Set(list.map(x=>x.id));
+  for(const x of list){
+   const l=E.find(e=>e.id===x.id);
+   if(l&&(l.o||C.me)===C.me)continue;
+   if(l&&(l.ts||0)>=x.ts&&(l.phId||null)===(x.ph||null))continue;
+   let photo=l?l.photo:null,phId=l?l.phId||null:null;
+   if(!x.ph){photo=null;phId=null}
+   else if(phId!==x.ph){try{const pr=await req('GET',API+'/'+x.ph);const pj=await pr.json();if(pj&&pj.d){photo=pj.d;phId=x.ph}}catch(e){}}
+   const rec={id:x.id,date:x.date,who:x.who,text:x.text||'',mood:x.mood==null?null:x.mood,ts:x.ts,photo,phId,o:C.other};
+   if(l){Object.assign(l,rec);put(l)}else{E.push(rec);put(rec)}
+   changed++;
   }
+  for(const e of E.filter(e=>e.o===C.other&&!ids.has(e.id))){E=E.filter(x=>x!==e);del(e.id);changed++}
   return changed;
  }
  async function run(){
   if(!C)return;if(busy){again=true;return}
   busy=true;state='busy';ui();
   try{
-   const sent=await push();const got=await pull();
-   if(getQ().length)await push();
+   await push();const got=await pull();
    C.ok=Date.now();saveC();state='on';err='';
    if(got)render();
-   if(got&&!document.hidden)toast(`☁️ ${got} neue${got===1?'r':''} Eintr${got===1?'ag':'äge'} von ${C.me==='Luna'?'Marc':'Luna'}`);
-  }catch(e){state='err';err=navigator.onLine===false?'Kein Internet – synchronisiert später automatisch.':e.message||'Keine Verbindung';}
+   if(got&&!document.hidden)toast(`☁️ Neues von ${C.other}`);
+  }catch(e){state='err';err=navigator.onLine===false?'Kein Internet – synchronisiert später automatisch.':(e.message||'Keine Verbindung')}
   busy=false;ui();
   if(again){again=false;setTimeout(run,300)}
  }
- function dirty(id,noRun){const q=getQ();if(!q.includes(id)){q.push(id);setQ(q)}if(C&&!noRun){clearTimeout(timer);timer=setTimeout(run,800)}}
+ function dirty(){setDirty(true);if(C){clearTimeout(timer);timer=setTimeout(run,800)}}
  function startPoll(){clearInterval(poll);if(C)poll=setInterval(()=>{if(!document.hidden)run()},20000)}
  function ui(){
   const on=!!C;
@@ -526,41 +525,47 @@ const Sync=(()=>{
   const icon={off:'☁️',busy:'🔄',on:'✅',err:'⚠️'}[on?state:'off'];
   const ago=C&&C.ok?new Date(C.ok).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'';
   $('syncIcon').textContent=icon;
-  $('syncHead').textContent=!on?'Online-Sync einrichten':state==='err'?'Sync-Problem':state==='busy'?'Synchronisiere …':'Mit Luna synchronisiert';
-  $('syncInfo').textContent=!on?'Damit ihr beide alles auf euren Handys seht':state==='err'?err:ago?'Zuletzt: '+ago+' Uhr · automatisch alle 20 s':'Verbunden';
-  if(on){$('syncState').textContent=icon+' '+$('syncHead').textContent;$('syncLast').textContent=$('syncInfo').textContent+(getQ().length?` · ${getQ().length} warten auf Upload`:'')}
+  $('syncHead').textContent=!on?'Online-Sync einrichten':state==='err'?'Sync-Problem':state==='busy'?'Synchronisiere …':'Mit '+C.other+' verbunden';
+  $('syncInfo').textContent=!on?'Ein Tipp – dann seht ihr beide alles':state==='err'?err:ago?'Zuletzt: '+ago+' Uhr · automatisch':'Verbunden';
+  if(on){$('syncState').textContent=icon+' '+$('syncHead').textContent+' (du bist '+C.me+')';$('syncLast').textContent=$('syncInfo').textContent;$('invSend').textContent='💌 Code an '+C.other+' schicken'}
  }
- function parseCfg(t){
-  t=t.trim();if(/^TB1\./.test(t))return null;
-  const g=k=>{const m=t.match(new RegExp('["\']?'+k+'["\']?\\s*:\\s*["\']([^"\']+)["\']'));return m?m[1]:''};
-  const k=g('apiKey'),p=g('projectId');return k&&p?{k,p}:null;
- }
- function rid(){const a=new Uint8Array(18);crypto.getRandomValues(a);return Array.from(a,b=>'abcdefghijklmnopqrstuvwxyz0123456789'[b%36]).join('')+'xyz'+Date.now().toString(36)}
- async function connect(c,me){
-  C={k:c.k,p:c.p,r:c.r,me,last:'',ok:0};saveC();
-  setQ([...new Set([...getQ(),...E.map(e=>e.id),...tombs()])]); // alles Lokale hochladen
-  $('syncMsg').textContent='Verbinde …';ui();await run();
-  $('syncMsg').textContent=state==='on'?'✅ Verbunden!':'⚠️ '+err;startPoll();
-  if(state!=='on'&&/verweigert|fehlt|ungültig/.test(err)){} // Daten bleiben lokal, nächster Versuch automatisch
- }
- function invite(){return 'TB1.'+btoa(JSON.stringify({k:C.k,p:C.p,r:C.r}))}
- // UI-Handler
- $('cfgStart').onclick=()=>{const c=parseCfg($('cfgIn').value);if(!c){$('syncMsg').textContent='Konfiguration nicht erkannt – es müssen apiKey und projectId drinstehen.';return}
-  c.r=rid();connect(c,'Marc')};
- $('invJoin').onclick=()=>{try{const t=$('invIn').value.trim().replace(/\s/g,'');const c=JSON.parse(atob(t.replace(/^TB1\./,'')));if(!c.k||!c.p||!c.r)throw 0;connect(c,'Luna')}
-  catch(e){$('syncMsg').textContent='Einladung nicht erkannt – bitte komplett einfügen.'}};
- $('invSend').onclick=()=>{const t=invite();const msg='📖 Einladung zu unserem Tagebuch!\nÖffne die App → ✨ Mehr → Online-Sync → Einladung einfügen:\n\n'+t;
+ function adopt(){for(const e of E)if(!e.o){e.o=C.me;put(e)}setDirty(true)}
+ const other=n=>n==='Marc'?'Luna':'Marc';
+ let me='Marc';
+ $('meSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;me=b.dataset.w;document.querySelectorAll('#meSeg button').forEach(x=>x.classList.toggle('on',x===b))};
+ $('cStart').onclick=async()=>{
+  $('syncMsg').textContent='Verbinde …';$('cStart').disabled=true;
+  try{
+   const empty={app:'unser-tagebuch',v:1,entries:[]};
+   const a=await create(empty),b=await create(empty);
+   C={me,other:other(me),mine:a,theirs:b,ok:0};saveC();adopt();await run();startPoll();render();
+   $('syncMsg').textContent=state==='on'?'✅ Verbunden! Jetzt den Code an '+C.other+' schicken.':'⚠️ '+err;
+  }catch(e){$('syncMsg').textContent='⚠️ Verbinden fehlgeschlagen: '+(e.message||'keine Verbindung')+'. Ist Internet an?'}
+  $('cStart').disabled=false;
+ };
+ $('invJoin').onclick=async()=>{
+  let c;try{const t=$('invIn').value.trim().replace(/\s/g,'').match(/TB2\.[A-Za-z0-9+/=]+/)[0];c=JSON.parse(atob(t.slice(4)));if(!c.a||!c.b||!c.n)throw 0}
+  catch(e){$('syncMsg').textContent='Code nicht erkannt – bitte die ganze Nachricht einfügen.';return}
+  C={me:other(c.n),other:c.n,mine:c.b,theirs:c.a,ok:0};saveC();adopt();
+  $('syncMsg').textContent='Verbinde …';await run();startPoll();render();
+  $('syncMsg').textContent=state==='on'?'✅ Verbunden mit '+C.other+'!':'⚠️ '+err;
+ };
+ $('invSend').onclick=()=>{
+  const t='TB2.'+btoa(JSON.stringify({a:C.mine,b:C.theirs,n:C.me}));
+  const msg='📖 Komm in unser Tagebuch!\nApp öffnen → ✨ Mehr → Online-Sync → diese ganze Nachricht einfügen → Beitreten\n\n'+t;
   if(window.Android&&Android.shareText){Android.shareText(msg);return}
-  $('invOut').value=t;$('invOut').classList.remove('hide');
-  try{navigator.clipboard.writeText(t).then(()=>$('syncMsg').textContent='Einladung kopiert ✓')}catch(e){}};
- $('syncNow').onclick=()=>{$('syncMsg').textContent='';run()};
+  $('invOut').value=msg;$('invOut').classList.remove('hide');
+  try{navigator.clipboard.writeText(msg).then(()=>$('syncMsg').textContent='Kopiert ✓')}catch(e){}
+ };
+ $('syncNow').onclick=()=>{$('syncMsg').textContent='';setDirty(true);run()};
  let offArm=false;
  $('syncOffBtn').onclick=()=>{if(!offArm){offArm=true;$('syncOffBtn').textContent='Wirklich trennen? Nochmal tippen';setTimeout(()=>{offArm=false;$('syncOffBtn').textContent='Sync auf diesem Handy trennen'},3000);return}
-  C=null;saveC();clearInterval(poll);state='off';$('syncMsg').textContent='Getrennt. Deine Einträge bleiben auf dem Handy.';ui()};
+  C=null;saveC();clearInterval(poll);state='off';$('syncMsg').textContent='Getrennt. Alle Einträge bleiben auf dem Handy.';ui();render()};
  $('syncPill').onclick=()=>{if(C&&state!=='err'){run();return}document.querySelector('nav.tab button[data-v=mehr]').click();setTimeout(()=>$('syncCard').scrollIntoView({behavior:'smooth'}),50)};
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&C)run()});
  window.addEventListener('online',()=>{if(C)run()});
- return {start(){ui();if(C){run();startPoll()}},dirty,run,get on(){return !!C}};
+ return {start(){ui();if(C){run();startPoll()}},dirty,run,get on(){return !!C},get me(){return C?C.me:null},get other(){return C?C.other:null},
+  canEdit(e){return !C||!e||(e.o||C.me)===C.me}};
 })();
 
 /* ---------- Start ---------- */
