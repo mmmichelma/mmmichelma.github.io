@@ -1,0 +1,44 @@
+name: Tagebuch APK
+
+on:
+  push:
+    paths:
+      - 'tagebuch-android/**'
+      - '.github/workflows/tagebuch-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tagebuch-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: APK bauen
+        run: gradle -p tagebuch-android assembleDebug --no-daemon
+      - name: APK umbenennen
+        run: cp tagebuch-android/app/build/outputs/apk/debug/app-debug.apk Tagebuch.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tagebuch-apk
+          path: Tagebuch.apk
+      # Direkter Download-Link fürs Handy (GitHub Release "bucketlist")
+      - name: APK als Download veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete tagebuch --yes --cleanup-tag || true
+          gh release create tagebuch Tagebuch.apk --target "${{ github.sha }}" \
+            --title "Unser Tagebuch" --notes "Unser Tagebuch (Marc & Luna) – APK zum Installieren" --prerelease
