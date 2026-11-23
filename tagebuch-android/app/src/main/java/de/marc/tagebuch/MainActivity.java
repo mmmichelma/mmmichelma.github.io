@@ -42,6 +42,8 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setAllowFileAccess(true);
+        // Erlaubt der lokalen App-Seite, mit Firebase im Internet zu sprechen
+        s.setAllowUniversalAccessFromFileURLs(true);
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView v, String url) {
@@ -112,6 +114,17 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        // Einladung als Text verschicken (WhatsApp usw.)
+        @JavascriptInterface
+        public void shareText(final String text) {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, text);
+                startActivity(Intent.createChooser(i, "Einladung an Luna schicken"));
+            });
+        }
+
         @JavascriptInterface
         public String takeImport() {
             String t = pendingImport;
