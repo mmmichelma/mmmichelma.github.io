@@ -7,7 +7,9 @@
 <title>Unsere Bucket-List</title>
 <style>
 :root{--bg:#fbf6f1;--card:#fff;--ink:#2a2220;--mut:#857a74;--line:#eee4dc;--acc:#c8553d;--acc2:#f7e3dc;--ok:#4f7d5c;--ok2:#e3efe6}
-@media (prefers-color-scheme:dark){:root{--bg:#1a1614;--card:#25201d;--ink:#f3ebe5;--mut:#a89c95;--line:#3a322d;--acc:#ef8a70;--acc2:#3d2a24;--ok:#8cc79c;--ok2:#25352a}}
+:root.dark{--bg:#1a1614;--card:#25201d;--ink:#f3ebe5;--mut:#a89c95;--line:#3a322d;--acc:#ef8a70;--acc2:#3d2a24;--ok:#8cc79c;--ok2:#25352a;color-scheme:dark}
+header{display:flex;align-items:flex-start;gap:10px}header>div{flex:1}
+.theme{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:20px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;margin-top:2px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px}
 .wrap{max-width:640px;margin:auto;padding:0 16px 100px}
@@ -58,10 +60,10 @@ textarea{min-height:70px;resize:vertical}
 </head>
 <body>
 <div class="wrap">
-<header>
+<header><div>
 <h1>Marc &amp; Luna 💛</h1>
 <div class="sub">Unsere Bucket-List – Dinge, die wir zusammen erleben wollen</div>
-</header>
+</div><button class="theme" id="themeBtn"></button></header>
 
 <div class="prog">
 <svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--line)" stroke-width="4"/><circle id="ringc" cx="18" cy="18" r="15.5" fill="none" stroke="var(--ok)" stroke-width="4" stroke-linecap="round" stroke-dasharray="0 100" transform="rotate(-90 18 18)" pathLength="100"/></svg>
@@ -216,6 +218,21 @@ $('sMerge').onclick=()=>{
   save();render();$('sIn').value='';$('sMsg').textContent=`Zusammengeführt ✓ (${n} neu)`;
  }catch(e){$('sMsg').textContent='Der Code ist ungültig.'}
 };
+// Dark Mode: auto / hell / dunkel
+const TKEY='bucket-theme';let theme='auto';try{theme=localStorage.getItem(TKEY)||'auto'}catch(e){}
+const mq=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
+function sysDark(){try{if(window.Android&&Android.isDark)return Android.isDark()}catch(e){}return mq?mq.matches:false}
+function applyTheme(){
+ const dark=theme==='dark'||(theme==='auto'&&sysDark());
+ document.documentElement.classList.toggle('dark',dark);
+ document.querySelector('meta[name=theme-color]').content=dark?'#1a1614':'#c8553d';
+ try{if(window.Android&&Android.setDark)Android.setDark(dark)}catch(e){}
+ $('themeBtn').textContent=theme==='auto'?'🌓 Auto':theme==='dark'?'🌙 Dunkel':'☀️ Hell';
+}
+$('themeBtn').onclick=()=>{theme=theme==='auto'?'dark':theme==='dark'?'light':'auto';try{localStorage.setItem(TKEY,theme)}catch(e){}applyTheme()};
+if(mq&&mq.addEventListener)mq.addEventListener('change',applyTheme);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)applyTheme()});
+applyTheme();
 render();
 </script>
 </body>

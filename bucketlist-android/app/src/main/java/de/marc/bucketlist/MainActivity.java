@@ -2,6 +2,7 @@ package de.marc.bucketlist;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
@@ -27,6 +28,20 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        @JavascriptInterface
+        public boolean isDark() {
+            int m = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+            return m == Configuration.UI_MODE_NIGHT_YES;
+        }
+
+        @JavascriptInterface
+        public void setDark(final boolean dark) {
+            runOnUiThread(() -> {
+                getWindow().setStatusBarColor(Color.parseColor(dark ? "#1A1614" : "#C8553D"));
+                web.setBackgroundColor(Color.parseColor(dark ? "#1A1614" : "#FBF6F1"));
+            });
+        }
+
         @JavascriptInterface
         public void share(String text) {
             Intent i = new Intent(Intent.ACTION_SEND);
