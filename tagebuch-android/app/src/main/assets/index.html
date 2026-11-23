@@ -71,6 +71,9 @@ nav.tab button.on{color:var(--acc);font-weight:700}
 .stat b{display:block;font-size:21px}
 .stat span{font-size:12px;color:var(--mut)}
 .hide{display:none!important}
+.syncbtn{display:flex;align-items:center;gap:12px;width:100%;margin-top:12px;background:var(--acc2);border:0;border-radius:16px;padding:14px;font:inherit;color:var(--ink);cursor:pointer;text-align:left}
+.syncbtn span{font-size:26px}.syncbtn b{display:block}.syncbtn small{color:var(--mut);font-size:13px}
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;font-size:14px;z-index:60;max-width:90%;text-align:center;display:none}#toast.on{display:block}
 .note{font-size:13px;color:var(--mut);line-height:1.45}
 .search{margin-bottom:6px}
 #show{position:fixed;inset:0;background:#000;z-index:50;display:none;color:#fff;flex-direction:column}
@@ -94,6 +97,7 @@ nav.tab button.on{color:var(--acc);font-weight:700}
  <div class="card streak"><div class="f">🔥</div><div><b id="streakN">0 Tage</b><div class="note" id="streakT">Schreibt heute euren ersten Eintrag!</div></div></div>
  <div class="card"><h2>Frage des Tages</h2><div class="prompt" id="prompt"></div></div>
  <div class="two" id="slots"></div>
+ <button class="syncbtn" data-sync><span>🔄</span><div><b>Mit Luna synchronisieren</b><small id="syncInfo">Schick ihr deine Einträge per WhatsApp</small></div></button>
  <div class="card hide" id="flash" style="margin-top:12px"></div>
 </section>
 
@@ -113,6 +117,10 @@ nav.tab button.on{color:var(--acc);font-weight:700}
   <p class="note">Alle Momente als Diashow, wie Stories. Perfekt für euren Jahrestag oder Silvester.</p>
   <div class="seg" id="showRange"><button data-r="30" class="on">30 Tage</button><button data-r="365">1 Jahr</button><button data-r="0">Alles</button></div>
   <button class="btn" id="playBtn">▶ Rückblick abspielen</button>
+ </div>
+ <div class="card"><h2>Synchronisieren</h2>
+  <p class="note">So habt ihr beide dasselbe Tagebuch:<br>1. Tippe auf „Synchronisieren“ und schick die Datei per WhatsApp an Luna.<br>2. Luna tippt in WhatsApp auf die Datei → „Öffnen mit Unser Tagebuch“.<br>3. Fertig – alles wird zusammengeführt. Sie kann dir genauso ihre Einträge schicken.</p>
+  <button class="btn" data-sync>🔄 Jetzt synchronisieren</button>
  </div>
  <div class="card"><h2>Sicherung</h2>
   <p class="note">Alles ist nur auf diesem Handy gespeichert. Mach ab und zu ein Backup, z. B. bevor du das Handy wechselst. Die Datei landet im Download-Ordner.</p>
@@ -156,6 +164,7 @@ nav.tab button.on{color:var(--acc);font-weight:700}
  <button class="btn g" data-close>Schließen</button>
 </div></div>
 
+<div id="toast"></div>
 <div id="show"><div class="bars" id="sBars"></div><button class="x" id="sX">✕</button><div class="img" id="sImg"><div class="cap"><div class="d" id="sD"></div><div class="q" id="sQ"></div></div></div></div>
 
 <script>
@@ -327,7 +336,7 @@ $('edSave').onclick=()=>{
  if(!text&&!photo){$('edText').focus();return}
  // Pro Person nur ein Eintrag pro Tag: vorhandenen überschreiben
  let e=cur||E.find(x=>x.date===date&&x.who===who);
- if(e&&cur&&(e.date!==date||e.who!==who)){const clash=E.find(x=>x!==e&&x.date===date&&x.who===who);if(clash){E=E.filter(x=>x!==clash);del(clash.id)}}
+ if(e&&cur&&(e.date!==date||e.who!==who)){const clash=E.find(x=>x!==e&&x.date===date&&x.who===who);if(clash){E=E.filter(x=>x!==clash);del(clash.id);addTomb(clash.id)}}
  if(!e){e={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6)};E.push(e)}
  Object.assign(e,{date,who,text,photo,mood,ts:Date.now()});
  put(e);closeS();render();
@@ -336,7 +345,7 @@ let delArm=false;
 $('edDel').onclick=()=>{
  if(!delArm){delArm=true;$('edDel').textContent='Wirklich löschen? Nochmal tippen';setTimeout(()=>{delArm=false;$('edDel').textContent='Löschen'},3000);return}
  delArm=false;$('edDel').textContent='Löschen';
- E=E.filter(x=>x!==cur);del(cur.id);closeS();render();
+ E=E.filter(x=>x!==cur);del(cur.id);addTomb(cur.id);closeS();render();
 };
 function alertBox(t){$('bkMsg').textContent=t;$('edPhotoBtn').textContent=t}
 
@@ -364,25 +373,65 @@ function endShow(){clearTimeout(stimer);$('show').classList.remove('open')}
 $('sImg').onclick=e=>{const x=e.clientX/window.innerWidth;si=x<.3?Math.max(0,si-1):si+1;slide()};
 $('sX').onclick=endShow;
 
-/* ---------- Backup ---------- */
+/* ---------- Sync & Backup ---------- */
+const DKEY='tagebuch-deleted',SKEY='tagebuch-lastsync';
+function tombs(){try{return JSON.parse(localStorage.getItem(DKEY))||[]}catch(e){return []}}
+function addTomb(id){const t=tombs();if(!t.includes(id)){t.push(id);try{localStorage.setItem(DKEY,JSON.stringify(t))}catch(e){}}}
+function exportData(){return JSON.stringify({app:'unser-tagebuch',v:2,at:Date.now(),entries:E,deleted:tombs()})}
+function toast(t,ms){$('toast').textContent=t;$('toast').classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>$('toast').classList.remove('on'),ms||3500)}
+// Zusammenführen: neuere Version gewinnt; ein Tag pro Person bleibt eindeutig
+function mergeData(txt){
+ const d=JSON.parse(txt);if(!d||!Array.isArray(d.entries))throw new Error('kein Tagebuch');
+ let neu=0,akt=0;
+ for(const id of d.deleted||[]){addTomb(id);const m=E.find(x=>x.id===id);if(m){E=E.filter(x=>x!==m);del(id)}}
+ const dead=new Set(tombs());
+ for(const e of d.entries){
+  if(dead.has(e.id))continue;
+  let m=E.find(x=>x.id===e.id);
+  if(!m){
+   const same=E.find(x=>x.date===e.date&&x.who===e.who);
+   if(same){ if((e.ts||0)>(same.ts||0)){E=E.filter(x=>x!==same);del(same.id);E.push(e);put(e);akt++} continue }
+   E.push(e);put(e);neu++;
+  }else if((e.ts||0)>(m.ts||0)){Object.assign(m,e);put(m);akt++}
+ }
+ render();return {neu,akt};
+}
+function syncInfo(){let t=0;try{t=+localStorage.getItem(SKEY)||0}catch(e){}
+ $('syncInfo').textContent=t?'Zuletzt gesendet: '+new Date(t).toLocaleDateString('de-DE',{day:'numeric',month:'short'})+', '+new Date(t).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'Schick ihr deine Einträge per WhatsApp'}
+document.querySelectorAll('[data-sync]').forEach(b=>b.onclick=()=>{
+ if(!E.length&&!tombs().length){toast('Noch keine Einträge zum Senden.');return}
+ if(!(window.Android&&Android.shareFile)){toast('Synchronisieren geht nur in der Android-App.');return}
+ toast('Bereite Datei vor …');
+ setTimeout(()=>{
+  const name='Tagebuch-Sync-'+todayISO()+'.json';
+  const ok=Android.shareFile(name,exportData());
+  if(ok){try{localStorage.setItem(SKEY,Date.now())}catch(e){}syncInfo();toast('Wähle WhatsApp → Luna')}
+  else toast('Teilen hat nicht geklappt.');
+ },60);
+});
+// Vom Android-Teil aufgerufen, wenn eine Sync-Datei geöffnet wurde
+let ready=false;
+window.checkImport=function(){
+ if(!ready||!(window.Android&&Android.takeImport))return;
+ let t='';try{t=Android.takeImport()}catch(e){}
+ if(!t)return;
+ try{const r=mergeData(t);toast(r.neu||r.akt?`🔄 Synchronisiert: ${r.neu} neu, ${r.akt} aktualisiert`:'🔄 Schon alles auf dem neuesten Stand',4500)}
+ catch(e){toast('Diese Datei ist keine Tagebuch-Datei.')}
+};
 $('expBtn').onclick=()=>{
  if(!E.length){$('bkMsg').textContent='Noch nichts zum Sichern.';return}
- const data=JSON.stringify({app:'unser-tagebuch',v:1,entries:E});
  const name='tagebuch-backup-'+todayISO()+'.json';
  if(window.Android&&Android.saveFile){
   $('bkMsg').textContent='Speichere …';
-  setTimeout(()=>{try{const r=Android.saveFile(name,data);$('bkMsg').textContent=r?'✅ Gespeichert: '+r:'Speichern fehlgeschlagen.'}catch(x){$('bkMsg').textContent='Speichern fehlgeschlagen.'}},50);
+  setTimeout(()=>{try{const r=Android.saveFile(name,exportData());$('bkMsg').textContent=r?'✅ Gespeichert: '+r:'Speichern fehlgeschlagen.'}catch(x){$('bkMsg').textContent='Speichern fehlgeschlagen.'}},50);
  }else $('bkMsg').textContent='Backup als Datei geht nur in der Android-App.';
 };
 $('impBtn').onclick=()=>$('impFile').click();
 $('impFile').onchange=()=>{
  const f=$('impFile').files[0];$('impFile').value='';if(!f)return;
  const r=new FileReader();r.onload=()=>{
-  try{const d=JSON.parse(r.result);if(!Array.isArray(d.entries))throw 0;let n=0;
-   for(const e of d.entries){const m=E.find(x=>x.id===e.id);
-    if(!m){E.push(e);put(e);n++}else if((e.ts||0)>(m.ts||0)){Object.assign(m,e);put(m)}}
-   render();$('bkMsg').textContent=`✅ Geladen (${n} neue Einträge)`;
-  }catch(x){$('bkMsg').textContent='Diese Datei ist kein Tagebuch-Backup.'}
+  try{const x=mergeData(r.result);$('bkMsg').textContent=`✅ Geladen (${x.neu} neu, ${x.akt} aktualisiert)`}
+  catch(e){$('bkMsg').textContent='Diese Datei ist kein Tagebuch-Backup.'}
  };r.readAsText(f);
 };
 
@@ -390,7 +439,7 @@ $('impFile').onchange=()=>{
 applyTheme();
 (async()=>{await openDB();E=await loadAll();
  if(!db)$('streakT').textContent='⚠️ Speicher nicht verfügbar – Einträge gehen beim Schließen verloren.';
- render();})();
+ ready=true;render();syncInfo();checkImport();})();
 </script>
 </body>
 </html>

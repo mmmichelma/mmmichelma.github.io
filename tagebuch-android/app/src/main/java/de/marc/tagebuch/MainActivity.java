@@ -17,7 +17,11 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import androidx.core.content.FileProvider;
+
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +30,7 @@ public class MainActivity extends Activity {
     private static final int PICK = 42;
     private WebView web;
     private ValueCallback<Uri[]> pending;
+    private String pendingImport = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,7 +42,12 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setAllowFileAccess(true);
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView v, String url) {
+                v.evaluateJavascript("window.checkImport&&checkImport()", null);
+            }
+        });
         web.setWebChromeClient(new WebChromeClient() {
             // Foto- und Backup-Auswahl aus der Galerie / Dateien
             @Override
@@ -56,6 +66,40 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Bridge(), "Android");
         web.loadUrl("file:///android_asset/index.html");
         setContentView(web);
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
+        web.evaluateJavascript("window.checkImport&&checkImport()", null);
+    }
+
+    // Liest eine geöffnete/geteilte Sync-Datei ein
+    private void handleIntent(Intent intent) {
+        if (intent == null) return;
+        Uri uri = null;
+        if (Intent.ACTION_VIEW.equals(intent.getAction())) uri = intent.getData();
+        else if (Intent.ACTION_SEND.equals(intent.getAction())) {
+            uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (uri == null) {
+                String t = intent.getStringExtra(Intent.EXTRA_TEXT);
+                if (t != null && t.contains("unser-tagebuch")) pendingImport = t;
+                return;
+            }
+        }
+        if (uri == null) return;
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] b = new byte[65536];
+            int n;
+            while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+            pendingImport = buf.toString("UTF-8");
+        } catch (Exception e) {
+            pendingImport = null;
+        }
     }
 
     @Override
@@ -68,6 +112,40 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        @JavascriptInterface
+        public String takeImport() {
+            String t = pendingImport;
+            pendingImport = null;
+            return t == null ? "" : t;
+        }
+
+        // Sync-Datei erstellen und über das Teilen-Menü (z. B. WhatsApp) verschicken
+        @JavascriptInterface
+        public boolean shareFile(String name, String content) {
+            try {
+                File dir = new File(getCacheDir(), "shared");
+                dir.mkdirs();
+                File[] old = dir.listFiles();
+                if (old != null) for (File f : old) f.delete();
+                File f = new File(dir, name);
+                try (FileOutputStream o = new FileOutputStream(f)) {
+                    o.write(content.getBytes(StandardCharsets.UTF_8));
+                }
+                final Uri u = FileProvider.getUriForFile(MainActivity.this, "de.marc.tagebuch.files", f);
+                runOnUiThread(() -> {
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("application/json");
+                    i.putExtra(Intent.EXTRA_STREAM, u);
+                    i.putExtra(Intent.EXTRA_TEXT, "📖 Neue Einträge aus unserem Tagebuch – tipp auf die Datei und öffne sie mit „Unser Tagebuch“.");
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(i, "Tagebuch an Luna schicken"));
+                });
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
         @JavascriptInterface
         public boolean isDark() {
             int m = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
