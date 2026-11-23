@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#c8553d">
+<title>Unsere Bucket-List</title>
+<style>
+:root{--bg:#fbf6f1;--card:#fff;--ink:#2a2220;--mut:#857a74;--line:#eee4dc;--acc:#c8553d;--acc2:#f7e3dc;--ok:#4f7d5c;--ok2:#e3efe6}
+@media (prefers-color-scheme:dark){:root{--bg:#1a1614;--card:#25201d;--ink:#f3ebe5;--mut:#a89c95;--line:#3a322d;--acc:#ef8a70;--acc2:#3d2a24;--ok:#8cc79c;--ok2:#25352a}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px}
+.wrap{max-width:640px;margin:auto;padding:0 16px 100px}
+header{padding:22px 0 10px}
+h1{font-size:26px;margin:0;letter-spacing:-.3px}
+.sub{color:var(--mut);font-size:14px;margin-top:4px}
+.prog{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;display:flex;align-items:center;gap:14px}
+.ring{width:58px;height:58px;flex:none}
+.prog b{font-size:20px}
+.prog .note{font-size:13px;color:var(--mut)}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 0 10px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:20px;padding:7px 13px;font:inherit;font-size:14px;white-space:nowrap;cursor:pointer}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:10px}
+.seg button{flex:1;border:0;background:transparent;padding:9px;border-radius:9px;font:inherit;font-size:14px;color:var(--mut);cursor:pointer}
+.seg button.on{background:var(--acc2);color:var(--acc);font-weight:600}
+.item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start}
+.item.done{background:var(--ok2);border-color:transparent}
+.chk{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);flex:none;display:grid;place-items:center;cursor:pointer;background:transparent;color:#fff;font-size:15px;padding:0}
+.done .chk{background:var(--ok);border-color:var(--ok)}
+.it{flex:1;min-width:0;cursor:pointer}
+.it .t{font-weight:600;line-height:1.3}
+.done .it .t{color:var(--ok)}
+.meta{font-size:12.5px;color:var(--mut);margin-top:3px}
+.mem{font-size:13.5px;margin-top:6px;font-style:italic}
+.empty{text-align:center;color:var(--mut);padding:30px 10px;font-size:15px}
+.fab{position:fixed;right:18px;bottom:20px;width:58px;height:58px;border-radius:50%;background:var(--acc);color:#fff;border:0;font-size:30px;box-shadow:0 6px 18px rgba(0,0,0,.2);cursor:pointer}
+.rnd{position:fixed;left:18px;bottom:20px;height:58px;border-radius:29px;background:var(--card);color:var(--ink);border:1px solid var(--line);padding:0 18px;font:inherit;font-size:15px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.12);cursor:pointer}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;justify-content:center;z-index:20}
+.sheet.open{display:flex}
+.panel{background:var(--card);width:100%;max-width:640px;border-radius:20px 20px 0 0;padding:18px 16px 26px;max-height:88vh;overflow:auto}
+.panel h2{margin:0 0 12px;font-size:19px}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+input,select,textarea{width:100%;font:inherit;font-size:16px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+textarea{min-height:70px;resize:vertical}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+.btn{display:block;width:100%;margin-top:14px;padding:13px;border:0;border-radius:12px;background:var(--acc);color:#fff;font:inherit;font-weight:600;font-size:16px;cursor:pointer}
+.btn.g{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.r{background:transparent;color:var(--acc);border:1px solid var(--acc2)}
+.ideas{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.ideas button{border:1px dashed var(--line);background:transparent;color:var(--ink);border-radius:16px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer}
+.big{font-size:22px;font-weight:700;text-align:center;margin:10px 0 4px}
+.toolbar{display:flex;justify-content:flex-end;gap:12px;margin-top:-4px}
+.link{background:none;border:0;color:var(--mut);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>Marc &amp; Luna 💛</h1>
+<div class="sub">Unsere Bucket-List – Dinge, die wir zusammen erleben wollen</div>
+</header>
+
+<div class="prog">
+<svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--line)" stroke-width="4"/><circle id="ringc" cx="18" cy="18" r="15.5" fill="none" stroke="var(--ok)" stroke-width="4" stroke-linecap="round" stroke-dasharray="0 100" transform="rotate(-90 18 18)" pathLength="100"/></svg>
+<div><b id="progT">0 von 0</b><div class="note" id="progN">Füg euren ersten Traum hinzu!</div></div>
+</div>
+
+<div class="seg"><button data-s="open" class="on">Offen</button><button data-s="done">Erlebt</button><button data-s="all">Alle</button></div>
+<div class="tabs" id="cats"></div>
+<div class="toolbar"><button class="link" id="openSync">Mit Luna teilen / Backup</button></div>
+<div id="list"></div>
+</div>
+
+<button class="rnd" id="rndBtn">🎲 Was machen wir?</button>
+<button class="fab" id="addBtn" aria-label="Hinzufügen">+</button>
+
+<!-- Bearbeiten -->
+<div class="sheet" id="edit"><div class="panel">
+<h2 id="eTitle">Neuer Wunsch</h2>
+<label>Was wollt ihr erleben?</label>
+<input id="fT" placeholder="z. B. Sonnenaufgang auf dem Feldberg">
+<div class="ideas" id="ideas"></div>
+<div class="row">
+<div><label>Kategorie</label><select id="fC"></select></div>
+<div><label>Idee von</label><select id="fW"><option>Marc</option><option>Luna</option><option>Beide</option></select></div>
+</div>
+<div class="row">
+<div><label>Kosten</label><select id="fK"><option value="0">kostenlos</option><option value="1">€</option><option value="2">€€</option><option value="3">€€€</option></select></div>
+<div><label>Wann ungefähr?</label><input id="fD" placeholder="z. B. Sommer 2027"></div>
+</div>
+<div id="doneBox">
+<label>Erinnerung (wie war's?)</label>
+<textarea id="fM" placeholder="Was ist passiert, was war das Schönste?"></textarea>
+</div>
+<button class="btn" id="fSave">Speichern</button>
+<button class="btn r" id="fDel">Löschen</button>
+<button class="btn g" data-close>Abbrechen</button>
+</div></div>
+
+<!-- Zufall -->
+<div class="sheet" id="rnd"><div class="panel" style="text-align:center">
+<div style="font-size:40px">🎲</div>
+<div class="big" id="rT"></div>
+<div class="meta" id="rM"></div>
+<button class="btn" id="rAgain">Nochmal würfeln</button>
+<button class="btn g" data-close>Schließen</button>
+</div></div>
+
+<!-- Sync -->
+<div class="sheet" id="sync"><div class="panel">
+<h2>Mit Luna teilen</h2>
+<p class="meta" style="font-size:14px">Die Liste liegt auf diesem Handy. Kopier den Code, schick ihn Luna (z. B. per WhatsApp), und sie fügt ihn bei sich ein. Beim Einfügen werden beide Listen zusammengeführt – nichts geht verloren.</p>
+<button class="btn" id="sCopy">Code kopieren</button>
+<label>Code von Luna einfügen</label>
+<textarea id="sIn" placeholder="Code hier einfügen"></textarea>
+<button class="btn g" id="sMerge">Zusammenführen</button>
+<p class="meta" id="sMsg" style="text-align:center"></p>
+<button class="btn g" data-close>Schließen</button>
+</div></div>
+
+<script>
+const KEY='bucket-marc-luna-v1';
+const CATS=[['🌍','Reisen'],['🍜','Essen'],['⛰️','Abenteuer'],['🎨','Kreativ'],['🏠','Zuhause'],['🎉','Erlebnisse'],['✨','Sonstiges']];
+const IDEAS={Reisen:['Städtetrip nach Amsterdam','Roadtrip ohne Plan','Nachtzug nach Wien','Zelten am See'],Essen:['Zusammen Sushi selber machen','Foodtruck-Festival','Jedes Restaurant einer Straße testen','Picknick im Park'],Abenteuer:['Sonnenaufgang auf dem Feldberg','Escape Room','Kanutour auf dem Main','Klettern gehen'],Kreativ:['Zusammen ein Bild malen','Fotoalbum vom Jahr basteln','Töpferkurs','Song zusammen aufnehmen'],Zuhause:['Filmmarathon mit Deckenburg','Pizza-Wettbewerb','Spieleabend mit Freunden','Pflanze zusammen großziehen'],Erlebnisse:['Konzert zusammen','Sterne gucken in der Nacht','Freizeitpark','Weihnachtsmarkt-Tour'],Sonstiges:['Brief an uns in 5 Jahren schreiben','Einen Tag ohne Handy','Gemeinsames Tattoo-Design überlegen 😄']};
+let S;try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!Array.isArray(S.items))S={items:[]};
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const $=i=>document.getElementById(i);
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const icon=c=>(CATS.find(x=>x[1]===c)||CATS[6])[0];
+let view='open',cat='Alle',editId=null;
+
+$('fC').innerHTML=CATS.map(c=>`<option value="${c[1]}">${c[0]} ${c[1]}</option>`).join('');
+function renderCats(){
+ $('cats').innerHTML=['Alle',...CATS.map(c=>c[1])].map(c=>`<button class="chip ${c===cat?'on':''}" data-c="${c}">${c==='Alle'?'Alle':icon(c)+' '+c}</button>`).join('');
+}
+function render(){
+ renderCats();
+ const tot=S.items.length,dn=S.items.filter(x=>x.done).length;
+ $('progT').textContent=`${dn} von ${tot} erlebt`;
+ $('progN').textContent=!tot?'Füg euren ersten Traum hinzu!':dn===tot?'Alles erlebt – Zeit für neue Träume 🎉':`Noch ${tot-dn} Abenteuer vor euch`;
+ $('ringc').setAttribute('stroke-dasharray',`${tot?dn/tot*100:0} 100`);
+ let L=S.items.filter(x=>(view==='all'||(view==='done')===!!x.done)&&(cat==='Alle'||x.c===cat));
+ L.sort((a,b)=>view==='done'?(b.dd||0)-(a.dd||0):(b.id-a.id));
+ $('list').innerHTML=L.length?L.map(x=>`<div class="item ${x.done?'done':''}">
+  <button class="chk" data-tog="${x.id}">${x.done?'✓':''}</button>
+  <div class="it" data-ed="${x.id}"><div class="t">${icon(x.c)} ${esc(x.t)}</div>
+  <div class="meta">${esc(x.w)}${x.k>0?' · '+'€'.repeat(x.k):' · kostenlos'}${x.d?' · '+esc(x.d):''}${x.done&&x.dd?' · erlebt am '+new Date(x.dd).toLocaleDateString('de-DE'):''}</div>
+  ${x.m?`<div class="mem">„${esc(x.m)}“</div>`:''}</div></div>`).join('')
+ :`<div class="empty">${view==='done'?'Noch nichts erlebt – aber bald! ✨':'Hier ist noch nichts. Tipp unten auf + 💛'}</div>`;
+}
+document.querySelector('.seg').onclick=e=>{const s=e.target.dataset.s;if(!s)return;view=s;document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.s===s));render()};
+$('cats').onclick=e=>{const c=e.target.dataset.c;if(c){cat=c;render()}};
+$('list').onclick=e=>{
+ const t=e.target.closest('[data-tog]'),d=e.target.closest('[data-ed]');
+ if(t){const x=S.items.find(i=>i.id==t.dataset.tog);x.done=!x.done;x.dd=x.done?Date.now():null;x.u=Date.now();save();render();if(x.done)openEdit(x.id,true)}
+ else if(d)openEdit(+d.dataset.ed);
+};
+function open(id){$(id).classList.add('open')}
+function close(){document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'))}
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=close);
+document.querySelectorAll('.sheet').forEach(s=>s.onclick=e=>{if(e.target===s)close()});
+
+function renderIdeas(){$('ideas').innerHTML=(editId?[]:IDEAS[$('fC').value]||[]).map(i=>`<button data-i="${esc(i)}">+ ${esc(i)}</button>`).join('')}
+$('fC').onchange=renderIdeas;
+$('ideas').onclick=e=>{if(e.target.dataset.i)$('fT').value=e.target.dataset.i};
+function openEdit(id,justDone){
+ editId=id||null;const x=S.items.find(i=>i.id===id);
+ $('eTitle').textContent=justDone?'Geschafft! 🎉 Wie war\'s?':x?'Bearbeiten':'Neuer Wunsch';
+ $('fT').value=x?x.t:'';$('fC').value=x?x.c:(cat!=='Alle'?cat:'Erlebnisse');$('fW').value=x?x.w:'Beide';
+ $('fK').value=x?x.k:0;$('fD').value=x?x.d||'':'';$('fM').value=x?x.m||'':'';
+ $('doneBox').style.display=x&&x.done?'block':'none';$('fDel').style.display=x?'block':'none';
+ renderIdeas();open('edit');if(!x)setTimeout(()=>$('fT').focus(),100);
+}
+$('addBtn').onclick=()=>openEdit(null);
+$('fSave').onclick=()=>{
+ const t=$('fT').value.trim();if(!t){$('fT').focus();return}
+ let x=S.items.find(i=>i.id===editId);
+ if(!x){x={id:Date.now(),done:false};S.items.push(x)}
+ Object.assign(x,{t,c:$('fC').value,w:$('fW').value,k:+$('fK').value,d:$('fD').value.trim(),m:$('fM').value.trim(),u:Date.now()});
+ save();close();render();
+};
+let delArm=false;
+$('fDel').onclick=()=>{
+ if(!delArm){delArm=true;$('fDel').textContent='Wirklich löschen? Nochmal tippen';setTimeout(()=>{delArm=false;$('fDel').textContent='Löschen'},3000);return}
+ delArm=false;$('fDel').textContent='Löschen';
+ S.items=S.items.filter(i=>i.id!==editId);(S.del=S.del||[]).push(editId);save();close();render();
+};
+
+function roll(){
+ const o=S.items.filter(x=>!x.done);
+ if(!o.length){$('rT').textContent='Erst ein paar Wünsche eintragen!';$('rM').textContent='';return}
+ const x=o[Math.floor(Math.random()*o.length)];
+ $('rT').textContent=icon(x.c)+' '+x.t;$('rM').textContent=(x.k>0?'€'.repeat(x.k):'kostenlos')+(x.d?' · '+x.d:'');
+}
+$('rndBtn').onclick=()=>{roll();open('rnd')};$('rAgain').onclick=roll;
+
+// Teilen
+$('openSync').onclick=()=>{$('sMsg').textContent='';open('sync')};
+$('sCopy').onclick=async()=>{
+ const c='BL1:'+btoa(unescape(encodeURIComponent(JSON.stringify(S))));
+ if(window.Android&&Android.share){Android.share(c);$('sMsg').textContent='Wähle WhatsApp und schick den Code an Luna';return}
+ try{await navigator.clipboard.writeText(c);$('sMsg').textContent='Kopiert ✓ – jetzt an Luna schicken'}
+ catch(e){$('sIn').value=c;$('sMsg').textContent='Code steht im Feld – markieren & kopieren'}
+};
+$('sMerge').onclick=()=>{
+ try{
+  const raw=$('sIn').value.trim().replace(/^BL1:/,'');const o=JSON.parse(decodeURIComponent(escape(atob(raw))));
+  const del=new Set([...(S.del||[]),...(o.del||[])]);let n=0;
+  for(const it of o.items||[]){const mine=S.items.find(i=>i.id===it.id);
+   if(!mine){S.items.push(it);n++}else if((it.u||0)>(mine.u||0))Object.assign(mine,it)}
+  S.items=S.items.filter(i=>!del.has(i.id));S.del=[...del];
+  save();render();$('sIn').value='';$('sMsg').textContent=`Zusammengeführt ✓ (${n} neu)`;
+ }catch(e){$('sMsg').textContent='Der Code ist ungültig.'}
+};
+render();
+</script>
+</body>
+</html>
