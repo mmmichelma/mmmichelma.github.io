@@ -74,7 +74,7 @@ textarea{min-height:70px;resize:vertical}
 
 <div class="seg"><button data-s="open" class="on">Offen</button><button data-s="done">Erlebt</button><button data-s="all">Alle</button></div>
 <div class="tabs" id="cats"></div>
-<div class="toolbar"><button class="link" id="openSync" style="text-decoration:none">☁️ Online-Sync einrichten</button></div>
+<div class="toolbar"><button class="link" id="openImp" style="text-decoration:none">📋 Ideen einfügen</button><button class="link" id="openSync" style="text-decoration:none">☁️ Online-Sync einrichten</button></div>
 <div id="list"></div>
 </div>
 
@@ -133,6 +133,14 @@ textarea{min-height:70px;resize:vertical}
 <button class="btn r" id="syncOffBtn">Sync auf diesem Handy trennen</button>
 </div>
 <p class="meta" id="sMsg" style="text-align:center"></p>
+<button class="btn g" data-close>Schließen</button>
+</div></div>
+<div class="sheet" id="imp"><div class="panel">
+<h2>Ideen einfügen 📋</h2>
+<p class="meta" style="font-size:14px">Öffne die Ideen-Datei, markiere alles, kopiere es und füge es hier ein. Doppelte Ideen werden übersprungen.</p>
+<textarea id="impIn" style="min-height:180px" placeholder="# Reisen&#10;- Städtetrip nach Amsterdam (€€)&#10;- Zelten an einem See (€)"></textarea>
+<button class="btn" id="impGo">Hinzufügen</button>
+<p class="meta" id="impMsg" style="text-align:center"></p>
 <button class="btn g" data-close>Schließen</button>
 </div></div>
 <div id="toast"></div>
@@ -214,6 +222,26 @@ function roll(){
 }
 $('rndBtn').onclick=()=>{roll();open('rnd')};$('rAgain').onclick=roll;
 
+// ---------- Ideen einfügen ----------
+$('openImp').onclick=()=>{$('impMsg').textContent='';open('imp')};
+$('impGo').onclick=()=>{
+ const cats=CATS.map(c=>c[1]);let cat='Sonstiges',n=0,skip=0;
+ const have=new Set(S.items.map(i=>i.t.trim().toLowerCase()));
+ for(let line of $('impIn').value.split(/\r?\n/)){
+  line=line.trim();if(!line)continue;
+  const h=line.match(/^#+\s*(.+)$/);
+  if(h){const c=cats.find(x=>h[1].toLowerCase().includes(x.toLowerCase()));cat=c||'Sonstiges';continue}
+  let t=line.replace(/^[-*•\d.)\s]+/,'').trim();if(!t)continue;
+  let k=0;const m=t.match(/\s*\((€{1,3}|kostenlos)\)\s*$/);if(m){k=m[1]==='kostenlos'?0:m[1].length;t=t.slice(0,m.index).trim()}
+  if(have.has(t.toLowerCase())){skip++;continue}
+  const it={id:Date.now()+n,t,c:cat,w:'Beide',k,d:'',m:'',done:false,u:Date.now()};
+  S.items.push(it);have.add(t.toLowerCase());n++;
+  if(typeof Sync!=='undefined')Sync.dirty(it.id);
+ }
+ save();render();
+ $('impMsg').textContent=n?`✅ ${n} Ideen hinzugefügt${skip?` (${skip} schon vorhanden)`:''}`:(skip?'Alle Ideen sind schon in der Liste.':'Nichts erkannt – bitte den Text der Datei einfügen.');
+ if(n)$('impIn').value='';
+};
 // ---------- Online-Sync (Supabase, gleiche Datenbank wie das Tagebuch) ----------
 function toast(t,ms){$('toast').textContent=t;$('toast').classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>$('toast').classList.remove('on'),ms||3500)}
 const Sync=(()=>{
