@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -114,6 +115,30 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        // Foto in die Galerie speichern (Bilder/Unser Tagebuch)
+        @JavascriptInterface
+        public String saveImage(String name, String dataUrl) {
+            try {
+                byte[] bytes = Base64.decode(dataUrl.substring(dataUrl.indexOf(',') + 1), Base64.DEFAULT);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Images.Media.DISPLAY_NAME, name);
+                    v.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                    v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Unser Tagebuch");
+                    Uri u = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                    try (OutputStream o = getContentResolver().openOutputStream(u)) { o.write(bytes); }
+                    return "Bilder/Unser Tagebuch";
+                } else {
+                    File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+                    File f = new File(dir, name);
+                    try (FileOutputStream o = new FileOutputStream(f)) { o.write(bytes); }
+                    return f.getAbsolutePath();
+                }
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
         // Einladung als Text verschicken (WhatsApp usw.)
         @JavascriptInterface
         public void shareText(final String text) {

@@ -36,7 +36,8 @@ h1{font-size:25px;margin:0;letter-spacing:-.3px}
 .day{margin-bottom:14px}
 .dayh{font-size:13px;color:var(--mut);font-weight:600;margin:16px 2px 6px;text-transform:uppercase;letter-spacing:.4px}
 .entry{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:8px;cursor:pointer}
-.entry img{width:100%;max-height:340px;object-fit:cover;display:block}
+.entry{position:relative}.entry img{width:100%;max-height:340px;object-fit:cover;display:block}
+.savebtn{position:absolute;top:10px;right:10px;border:0;border-radius:20px;padding:7px 12px;background:rgba(0,0,0,.55);color:#fff;font:inherit;font-size:13px;cursor:pointer}
 .entry .b{padding:12px}
 .entry .w{font-size:13px;font-weight:700}
 .entry .t{margin-top:4px;line-height:1.4}
@@ -120,17 +121,17 @@ nav.tab button.on{color:var(--acc);font-weight:700}
  </div>
  <div class="card" id="syncCard"><h2>Online-Sync ☁️</h2>
   <div id="syncOff">
-   <p class="note"><b>Du richtest ein (einmalig):</b> Füg hier die <b>Project URL</b> und den <b>Publishable/anon Key</b> aus Supabase ein und starte euer gemeinsames Tagebuch.</p>
-   <textarea id="cfgIn" placeholder="https://xxxx.supabase.co&#10;sb_publishable_… (oder eyJ…)"></textarea>
-   <button class="btn" id="cfgStart">Gemeinsames Tagebuch starten</button>
-   <p class="note" style="margin-top:16px"><b>Luna:</b> Einladung einfügen, die du ihr geschickt hast.</p>
-   <textarea id="invIn" placeholder="TB3.…" style="min-height:60px"></textarea>
-   <button class="btn g" id="invJoin">Beitreten</button>
+   <p class="note">Gebt auf <b>beiden Handys dasselbe Passwort</b> ein – mehr ist nicht nötig. Das Passwort ist der Schlüssel zu eurem Tagebuch, wählt also etwas, das nur ihr kennt.</p>
+   <label>Wer bist du?</label>
+   <div class="seg" id="meSeg"><button data-w="Marc" class="on">Marc</button><button data-w="Luna">Luna</button></div>
+   <label>Gemeinsames Passwort</label>
+   <input id="pwIn" type="text" autocomplete="off" autocapitalize="off" placeholder="mind. 8 Zeichen, z. B. sonnenblume-2026">
+   <button class="btn" id="pwGo">☁️ Verbinden</button>
   </div>
   <div id="syncOn" class="hide">
    <p style="margin:0 0 4px;font-weight:700" id="syncState"></p>
    <p class="note" id="syncLast"></p>
-   <button class="btn" id="invSend">💌 Einladung an Luna schicken</button>
+   <button class="btn" id="invSend">💌 Luna einladen</button>
    <textarea id="invOut" class="hide" readonly style="margin-top:8px;min-height:60px"></textarea>
    <button class="btn g" id="syncNow">🔄 Jetzt synchronisieren</button>
    <button class="btn r" id="syncOffBtn">Sync auf diesem Handy trennen</button>
@@ -247,7 +248,7 @@ function streaks(){
  return {cur,best,today:days.has(todayISO())};
 }
 function entryHTML(e){
- return `<div class="entry" data-e="${e.id}">${e.photo?`<img src="${e.photo}" alt="">`:''}<div class="b"><div class="w ${e.who[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${esc(e.who)}</div>${e.text?`<div class="t">${esc(e.text)}</div>`:''}</div></div>`;
+ return `<div class="entry" data-e="${e.id}">${e.photo?`<img src="${e.photo}" alt=""><button class="savebtn" data-save="${e.id}">⬇️ Foto speichern</button>`:''}<div class="b"><div class="w ${e.who[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${esc(e.who)}</div>${e.text?`<div class="t">${esc(e.text)}</div>`:''}</div></div>`;
 }
 
 /* ---------- Render ---------- */
@@ -296,12 +297,20 @@ $('q').oninput=render;
 
 /* ---------- Klicks auf Einträge / Tage ---------- */
 document.addEventListener('click',e=>{
+ const sv=e.target.closest('[data-save]');
+ if(sv){e.stopPropagation();savePhoto(E.find(x=>x.id===sv.dataset.save));return}
  const en=e.target.closest('[data-e]'),nw=e.target.closest('[data-new]'),dy=e.target.closest('[data-day]');
  if(e.target.closest('.sheet .panel')&&!e.target.closest('#dayBody'))return;
  if(en){closeS();openEd(E.find(x=>x.id===en.dataset.e))}
  else if(nw)openEd(null,nw.dataset.new);
  else if(dy)openDay(dy.dataset.day);
 });
+function savePhoto(e){
+ if(!e||!e.photo)return;
+ const name='Tagebuch_'+e.date+'_'+e.who+'.jpg';
+ if(window.Android&&Android.saveImage){const r=Android.saveImage(name,e.photo);toast(r?'✅ In der Galerie gespeichert ('+r+')':'Speichern hat nicht geklappt.');return}
+ toast('Foto speichern geht in der Android-App.');
+}
 function openDay(d){
  const es=E.filter(e=>e.date===d);
  $('dayT').textContent=nice(d,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
@@ -341,9 +350,9 @@ $('edFile').onchange=async()=>{
 function shrink(file){return new Promise((res,rej)=>{
  const r=new FileReader();r.onerror=rej;
  r.onload=()=>{const img=new Image();img.onerror=rej;img.onload=()=>{
-  const max=1080,s=Math.min(1,max/Math.max(img.width,img.height));
+  const max=2048,s=Math.min(1,max/Math.max(img.width,img.height));
   const c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
-  c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.72))};img.src=r.result};
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.9))};img.src=r.result};
  r.readAsDataURL(file);
 })}
 $('edSave').onclick=()=>{
@@ -467,7 +476,7 @@ const Sync=(()=>{
    const rec=e?e:(dead.has(id)?{id,deleted:true,ts:Date.now()}:null);
    if(!rec){setQ(getQ().filter(x=>x!==id));continue}
    const sz=(rec.photo||'').length+500;
-   if(size+sz>3e6||rows.length>=50)await flush();
+   if(size+sz>4e6||rows.length>=50)await flush();
    rows.push(row(rec));size+=sz;
   }
   await flush();return sent;
@@ -493,11 +502,11 @@ const Sync=(()=>{
   let changed=0;
   for(let round=0;round<200;round++){
    const url=T()+'?select=id,data,photo,ts,deleted,updated_at&room=eq.'+encodeURIComponent(C.r)
-    +'&updated_at=gt.'+encodeURIComponent(C.last||'1970-01-01T00:00:00Z')+'&order=updated_at.asc&limit=20';
+    +'&updated_at=gt.'+encodeURIComponent(C.last||'1970-01-01T00:00:00Z')+'&order=updated_at.asc&limit=8';
    const res=await call('GET',url);
    const list=Array.isArray(res)?res:[];
    for(const x of list){const d=unrow(x);if(apply(d.e))changed++;if(d.srv)C.last=d.srv}
-   saveC();if(list.length<20)break;
+   saveC();if(list.length<8)break;
   }
   return changed;
  }
@@ -526,35 +535,42 @@ const Sync=(()=>{
   $('syncInfo').textContent=!on?'Damit ihr beide alles auf euren Handys seht':state==='err'?err:ago?'Zuletzt: '+ago+' Uhr · automatisch alle 20 s':'Verbunden';
   if(on){$('syncState').textContent=icon+' '+$('syncHead').textContent;$('syncLast').textContent=$('syncInfo').textContent+(getQ().length?` · ${getQ().length} warten auf Upload`:'')}
  }
- function parseCfg(t){
-  t=t.trim();
-  const u=(t.match(/https:\/\/[a-z0-9-]+\.supabase\.co/i)||[])[0];
-  const k=(t.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+|sb_publishable_[\w-]+/)||[])[0];
-  return u&&k?{u,k}:null;
- }
- function rid(){const a=new Uint8Array(18);crypto.getRandomValues(a);return Array.from(a,b=>'abcdefghijklmnopqrstuvwxyz0123456789'[b%36]).join('')+'xyz'+Date.now().toString(36)}
+ const SUPA_URL='https://evzyaroqduvkcxnpuaup.supabase.co',SUPA_KEY='sb_publishable_x4geiOGEC3KDpGnpqBsPgQ_rPEuVyVb';
+ const APK='https://github.com/mmmichelma/mmmichelma.github.io/releases/download/tagebuch/Tagebuch.apk';
+ // SHA-256 (eigene Umsetzung, funktioniert überall)
+ function sha256(str){const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const b=Array.from(new TextEncoder().encode(str)),l=b.length*8;b.push(0x80);while(b.length%64!==56)b.push(0);for(let i=7;i>=0;i--)b.push(Math.floor(l/Math.pow(2,i*8))&255);
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];const r=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let o=0;o<b.length;o+=64){const w=new Array(64);for(let i=0;i<16;i++)w[i]=(b[o+4*i]<<24)|(b[o+4*i+1]<<16)|(b[o+4*i+2]<<8)|b[o+4*i+3];
+   for(let i=16;i<64;i++){const s0=r(w[i-15],7)^r(w[i-15],18)^(w[i-15]>>>3),s1=r(w[i-2],17)^r(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0}
+   let [a,bb,c,d,e,f,g,h]=H;
+   for(let i=0;i<64;i++){const S1=r(e,6)^r(e,11)^r(e,25),ch=(e&f)^(~e&g),t1=(h+S1+ch+K[i]+w[i])|0,S0=r(a,2)^r(a,13)^r(a,22),mj=(a&bb)^(a&c)^(bb&c),t2=(S0+mj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=bb;bb=a;a=(t1+t2)|0}
+   H=[H[0]+a,H[1]+bb,H[2]+c,H[3]+d,H[4]+e,H[5]+f,H[6]+g,H[7]+h].map(x=>x|0)}
+  return H.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('')}
+ const roomFor=pw=>'pw_'+sha256('unser-tagebuch|'+pw.trim().toLowerCase());
  async function connect(c,me){
-  C={u:c.u,k:c.k,r:c.r,me,last:'',ok:0};saveC();
+  C={u:c.u,k:c.k,r:c.r,pw:c.pw,me,last:'',ok:0};saveC();
   setQ([...new Set([...getQ(),...E.map(e=>e.id),...tombs()])]); // alles Lokale hochladen
   $('syncMsg').textContent='Verbinde …';ui();await run();
   $('syncMsg').textContent=state==='on'?'✅ Verbunden!':'⚠️ '+err;startPoll();
   if(state!=='on'&&/verweigert|fehlt|ungültig/.test(err)){} // Daten bleiben lokal, nächster Versuch automatisch
  }
- function invite(){return 'TB3.'+btoa(JSON.stringify({u:C.u,k:C.k,r:C.r}))}
- // UI-Handler
- $('cfgStart').onclick=()=>{const c=parseCfg($('cfgIn').value);if(!c){$('syncMsg').textContent='Nicht erkannt – es müssen die Project URL (https://….supabase.co) und der Key (sb_publishable_… oder eyJ…) drinstehen.';return}
-  c.r=rid();connect(c,'Marc')};
- $('invJoin').onclick=()=>{try{const t=$('invIn').value.trim().replace(/\s/g,'');const c=JSON.parse(atob((t.match(/TB3\.[A-Za-z0-9+/=]+/)||[''])[0].slice(4)));if(!c.k||!c.u||!c.r)throw 0;connect(c,'Luna')}
-  catch(e){$('syncMsg').textContent='Einladung nicht erkannt – bitte komplett einfügen.'}};
- $('invSend').onclick=()=>{const t=invite();const msg='📖 Einladung zu unserem Tagebuch!\nÖffne die App → ✨ Mehr → Online-Sync → Einladung einfügen:\n\n'+t;
+ let me='Marc';
+ $('meSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;me=b.dataset.w;document.querySelectorAll('#meSeg button').forEach(x=>x.classList.toggle('on',x===b))};
+ $('pwGo').onclick=()=>{const pw=$('pwIn').value.trim();
+  if(pw.length<8){$('syncMsg').textContent='Bitte mindestens 8 Zeichen – das Passwort schützt euer Tagebuch.';return}
+  connect({u:SUPA_URL,k:SUPA_KEY,r:roomFor(pw),pw},me)};
+ $('invSend').onclick=()=>{const other=C.me==='Luna'?'Marc':'Luna';
+  const msg=`📖 Unser Tagebuch!\n1. App installieren: ${APK}\n2. App öffnen → ✨ Mehr → Online-Sync\n3. „${other}“ wählen und dieses Passwort eingeben: ${C.pw||'(unser Passwort)'}\n4. Verbinden – fertig 💛`;
   if(window.Android&&Android.shareText){Android.shareText(msg);return}
-  $('invOut').value=t;$('invOut').classList.remove('hide');
-  try{navigator.clipboard.writeText(t).then(()=>$('syncMsg').textContent='Einladung kopiert ✓')}catch(e){}};
+  $('invOut').value=msg;$('invOut').classList.remove('hide');
+  try{navigator.clipboard.writeText(msg).then(()=>$('syncMsg').textContent='Kopiert ✓')}catch(e){}};
  $('syncNow').onclick=()=>{$('syncMsg').textContent='';run()};
  let offArm=false;
  $('syncOffBtn').onclick=()=>{if(!offArm){offArm=true;$('syncOffBtn').textContent='Wirklich trennen? Nochmal tippen';setTimeout(()=>{offArm=false;$('syncOffBtn').textContent='Sync auf diesem Handy trennen'},3000);return}
   C=null;saveC();clearInterval(poll);state='off';$('syncMsg').textContent='Getrennt. Deine Einträge bleiben auf dem Handy.';ui()};
  $('syncPill').onclick=()=>{if(C&&state!=='err'){run();return}document.querySelector('nav.tab button[data-v=mehr]').click();setTimeout(()=>$('syncCard').scrollIntoView({behavior:'smooth'}),50)};
+ $('invSend').textContent='💌 '+(C&&C.me==='Luna'?'Marc':'Luna')+' einladen';
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&C)run()});
  window.addEventListener('online',()=>{if(C)run()});
  return {start(){ui();if(C){run();startPoll()}},dirty,run,get on(){return !!C}};
