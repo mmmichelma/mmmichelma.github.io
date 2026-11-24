@@ -120,11 +120,11 @@ nav.tab button.on{color:var(--acc);font-weight:700}
  </div>
  <div class="card" id="syncCard"><h2>Online-Sync ☁️</h2>
   <div id="syncOff">
-   <p class="note"><b>Du richtest ein (einmalig):</b> Füg hier die Firebase-Konfiguration ein (Anleitung bekommst du von Claude) und starte euer gemeinsames Tagebuch.</p>
-   <textarea id="cfgIn" placeholder="const firebaseConfig = { apiKey: &quot;…&quot;, projectId: &quot;…&quot;, … }"></textarea>
+   <p class="note"><b>Du richtest ein (einmalig):</b> Füg hier die <b>Project URL</b> und den <b>Publishable/anon Key</b> aus Supabase ein und starte euer gemeinsames Tagebuch.</p>
+   <textarea id="cfgIn" placeholder="https://xxxx.supabase.co&#10;sb_publishable_… (oder eyJ…)"></textarea>
    <button class="btn" id="cfgStart">Gemeinsames Tagebuch starten</button>
    <p class="note" style="margin-top:16px"><b>Luna:</b> Einladung einfügen, die du ihr geschickt hast.</p>
-   <textarea id="invIn" placeholder="TB1.…" style="min-height:60px"></textarea>
+   <textarea id="invIn" placeholder="TB3.…" style="min-height:60px"></textarea>
    <button class="btn g" id="invJoin">Beitreten</button>
   </div>
   <div id="syncOn" class="hide">
@@ -438,41 +438,37 @@ $('impFile').onchange=()=>{
  };r.readAsText(f);
 };
 
-/* ---------- Online-Sync (Firebase Firestore, REST) ---------- */
+/* ---------- Online-Sync (Supabase, REST) ---------- */
 const Sync=(()=>{
- const CK='tagebuch-cloud',QK='tagebuch-dirty';
+ const CK='tagebuch-supa',QK='tagebuch-dirty';
  let C=null,busy=false,again=false,timer=null,poll=null,state='off',err='';
  try{C=JSON.parse(localStorage.getItem(CK))}catch(e){}
  const saveC=()=>{try{C?localStorage.setItem(CK,JSON.stringify(C)):localStorage.removeItem(CK)}catch(e){}};
  const getQ=()=>{try{return JSON.parse(localStorage.getItem(QK))||[]}catch(e){return []}};
  const setQ=q=>{try{localStorage.setItem(QK,JSON.stringify(q))}catch(e){}};
- const base=()=>`https://firestore.googleapis.com/v1/projects/${C.p}/databases/(default)/documents`;
- const docName=id=>`projects/${C.p}/databases/(default)/documents/tagebuecher/${C.r}/eintraege/${id}`;
- function enc(e){return {date:{stringValue:e.date||''},who:{stringValue:e.who||''},text:{stringValue:e.text||''},photo:{stringValue:e.photo||''},
-  mood:e.mood==null?{nullValue:null}:{integerValue:String(e.mood)},ts:{integerValue:String(e.ts||0)},deleted:{booleanValue:!!e.deleted}}}
- function dec(name,f){const g=k=>f[k]||{};const id=name.split('/').pop();
-  const e={id,date:g('date').stringValue||'',who:g('who').stringValue||'',text:g('text').stringValue||'',photo:g('photo').stringValue||null,
-   mood:g('mood').integerValue!=null?+g('mood').integerValue:null,ts:+(g('ts').integerValue||0),deleted:!!g('deleted').booleanValue};
-  return {e,srv:g('srv').timestampValue||''}}
- async function call(url,body){
-  const r=await fetch(url+(url.includes('?')?'&':'?')+'key='+encodeURIComponent(C.k),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const H=()=>{const h={'apikey':C.k,'x-room':C.r,'Content-Type':'application/json'};if(/^eyJ/.test(C.k))h.Authorization='Bearer '+C.k;return h};
+ const T=()=>C.u.replace(/\/+$/,'')+'/rest/v1/eintraege';
+ function row(e){return {room:C.r,id:e.id,data:{date:e.date||'',who:e.who||'',text:e.text||'',mood:e.mood==null?null:e.mood},photo:e.photo||null,ts:e.ts||0,deleted:!!e.deleted}}
+ function unrow(x){const d=x.data||{};return {e:{id:x.id,date:d.date||'',who:d.who||'',text:d.text||'',mood:d.mood==null?null:+d.mood,photo:x.photo||null,ts:+(x.ts||0),deleted:!!x.deleted},srv:x.updated_at||''}}
+ async function call(method,url,body,extra){
+  const r=await fetch(url,{method,headers:Object.assign(H(),extra||{}),body:body===undefined?undefined:JSON.stringify(body)});
   const t=await r.text();let j=null;try{j=JSON.parse(t)}catch(x){}
-  if(!r.ok){const m=(j&&(j[0]||j).error&&(j[0]||j).error.message)||('HTTP '+r.status);const s=(j&&(j[0]||j).error&&(j[0]||j).error.status)||'';throw new Error(s==='PERMISSION_DENIED'?'Zugriff verweigert – sind die Firestore-Regeln eingefügt?':s==='NOT_FOUND'||/database.*not exist/i.test(m)?'Firestore-Datenbank fehlt – im Firebase-Projekt anlegen.':/API key/i.test(m)?'API-Key ungültig.':m)}
+  if(!r.ok){const m=(j&&(j.message||j.msg||j.error))||('HTTP '+r.status);
+   throw new Error(r.status===401||/api key|JWT/i.test(m)?'Schlüssel (API-Key) ungültig.':/relation .* does not exist|Could not find the table|PGRST205/i.test(m+(j&&j.code||''))?'Tabelle fehlt – SQL-Code in Supabase ausführen.':/row-level security|permission denied/i.test(m)?'Zugriff verweigert – SQL-Code komplett ausgeführt?':m)}
   return j;
  }
  async function push(){
   let q=getQ();if(!q.length)return 0;
-  const dead=new Set(tombs());let writes=[],size=0,sent=0;
-  const flush=async()=>{if(!writes.length)return;await call(base()+':commit',{writes});sent+=writes.length;
-   const done=new Set(writes.map(w=>w.update.name.split('/').pop()));q=getQ().filter(id=>!done.has(id));setQ(q);writes=[];size=0};
+  const dead=new Set(tombs());let rows=[],size=0,sent=0;
+  const flush=async()=>{if(!rows.length)return;await call('POST',T(),rows,{'Prefer':'resolution=merge-duplicates,return=minimal'});sent+=rows.length;
+   const done=new Set(rows.map(r=>r.id));q=getQ().filter(id=>!done.has(id));setQ(q);rows=[];size=0};
   for(const id of q.slice()){
    const e=E.find(x=>x.id===id);
    const rec=e?e:(dead.has(id)?{id,deleted:true,ts:Date.now()}:null);
    if(!rec){setQ(getQ().filter(x=>x!==id));continue}
-   const w={update:{name:docName(id),fields:enc(rec)},updateTransforms:[{fieldPath:'srv',setToServerValue:'REQUEST_TIME'}]};
    const sz=(rec.photo||'').length+500;
-   if(size+sz>4e6||writes.length>=100)await flush();
-   writes.push(w);size+=sz;
+   if(size+sz>3e6||rows.length>=50)await flush();
+   rows.push(row(rec));size+=sz;
   }
   await flush();return sent;
  }
@@ -496,12 +492,12 @@ const Sync=(()=>{
  async function pull(){
   let changed=0;
   for(let round=0;round<200;round++){
-   const res=await call(`${base()}/tagebuecher/${C.r}:runQuery`,{structuredQuery:{from:[{collectionId:'eintraege'}],
-    where:{fieldFilter:{field:{fieldPath:'srv'},op:'GREATER_THAN',value:{timestampValue:C.last||'1970-01-01T00:00:00Z'}}},
-    orderBy:[{field:{fieldPath:'srv'},direction:'ASCENDING'}],limit:50}});
-   const docs=(res||[]).filter(x=>x.document);
-   for(const x of docs){const d=dec(x.document.name,x.document.fields||{});if(apply(d.e))changed++;if(d.srv)C.last=d.srv}
-   saveC();if(docs.length<50)break;
+   const url=T()+'?select=id,data,photo,ts,deleted,updated_at&room=eq.'+encodeURIComponent(C.r)
+    +'&updated_at=gt.'+encodeURIComponent(C.last||'1970-01-01T00:00:00Z')+'&order=updated_at.asc&limit=20';
+   const res=await call('GET',url);
+   const list=Array.isArray(res)?res:[];
+   for(const x of list){const d=unrow(x);if(apply(d.e))changed++;if(d.srv)C.last=d.srv}
+   saveC();if(list.length<20)break;
   }
   return changed;
  }
@@ -531,23 +527,24 @@ const Sync=(()=>{
   if(on){$('syncState').textContent=icon+' '+$('syncHead').textContent;$('syncLast').textContent=$('syncInfo').textContent+(getQ().length?` · ${getQ().length} warten auf Upload`:'')}
  }
  function parseCfg(t){
-  t=t.trim();if(/^TB1\./.test(t))return null;
-  const g=k=>{const m=t.match(new RegExp('["\']?'+k+'["\']?\\s*:\\s*["\']([^"\']+)["\']'));return m?m[1]:''};
-  const k=g('apiKey'),p=g('projectId');return k&&p?{k,p}:null;
+  t=t.trim();
+  const u=(t.match(/https:\/\/[a-z0-9-]+\.supabase\.co/i)||[])[0];
+  const k=(t.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+|sb_publishable_[\w-]+/)||[])[0];
+  return u&&k?{u,k}:null;
  }
  function rid(){const a=new Uint8Array(18);crypto.getRandomValues(a);return Array.from(a,b=>'abcdefghijklmnopqrstuvwxyz0123456789'[b%36]).join('')+'xyz'+Date.now().toString(36)}
  async function connect(c,me){
-  C={k:c.k,p:c.p,r:c.r,me,last:'',ok:0};saveC();
+  C={u:c.u,k:c.k,r:c.r,me,last:'',ok:0};saveC();
   setQ([...new Set([...getQ(),...E.map(e=>e.id),...tombs()])]); // alles Lokale hochladen
   $('syncMsg').textContent='Verbinde …';ui();await run();
   $('syncMsg').textContent=state==='on'?'✅ Verbunden!':'⚠️ '+err;startPoll();
   if(state!=='on'&&/verweigert|fehlt|ungültig/.test(err)){} // Daten bleiben lokal, nächster Versuch automatisch
  }
- function invite(){return 'TB1.'+btoa(JSON.stringify({k:C.k,p:C.p,r:C.r}))}
+ function invite(){return 'TB3.'+btoa(JSON.stringify({u:C.u,k:C.k,r:C.r}))}
  // UI-Handler
- $('cfgStart').onclick=()=>{const c=parseCfg($('cfgIn').value);if(!c){$('syncMsg').textContent='Konfiguration nicht erkannt – es müssen apiKey und projectId drinstehen.';return}
+ $('cfgStart').onclick=()=>{const c=parseCfg($('cfgIn').value);if(!c){$('syncMsg').textContent='Nicht erkannt – es müssen die Project URL (https://….supabase.co) und der Key (sb_publishable_… oder eyJ…) drinstehen.';return}
   c.r=rid();connect(c,'Marc')};
- $('invJoin').onclick=()=>{try{const t=$('invIn').value.trim().replace(/\s/g,'');const c=JSON.parse(atob(t.replace(/^TB1\./,'')));if(!c.k||!c.p||!c.r)throw 0;connect(c,'Luna')}
+ $('invJoin').onclick=()=>{try{const t=$('invIn').value.trim().replace(/\s/g,'');const c=JSON.parse(atob((t.match(/TB3\.[A-Za-z0-9+/=]+/)||[''])[0].slice(4)));if(!c.k||!c.u||!c.r)throw 0;connect(c,'Luna')}
   catch(e){$('syncMsg').textContent='Einladung nicht erkannt – bitte komplett einfügen.'}};
  $('invSend').onclick=()=>{const t=invite();const msg='📖 Einladung zu unserem Tagebuch!\nÖffne die App → ✨ Mehr → Online-Sync → Einladung einfügen:\n\n'+t;
   if(window.Android&&Android.shareText){Android.shareText(msg);return}
