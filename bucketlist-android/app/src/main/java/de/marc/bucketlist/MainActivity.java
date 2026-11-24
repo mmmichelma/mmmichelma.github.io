@@ -21,6 +21,9 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true); // speichert die Liste dauerhaft
+        s.setAllowFileAccess(true);
+        // erlaubt der App-Seite, mit dem Sync-Server (Supabase) zu sprechen
+        s.setAllowUniversalAccessFromFileURLs(true);
         web.setWebViewClient(new WebViewClient());
         web.addJavascriptInterface(new Bridge(), "Android");
         web.loadUrl("file:///android_asset/index.html");
@@ -28,6 +31,16 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        @JavascriptInterface
+        public void shareText(final String text) {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, text);
+                startActivity(Intent.createChooser(i, "Einladung schicken"));
+            });
+        }
+
         @JavascriptInterface
         public boolean isDark() {
             int m = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;

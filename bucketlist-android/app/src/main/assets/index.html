@@ -56,6 +56,8 @@ textarea{min-height:70px;resize:vertical}
 .big{font-size:22px;font-weight:700;text-align:center;margin:10px 0 4px}
 .toolbar{display:flex;justify-content:flex-end;gap:12px;margin-top:-4px}
 .link{background:none;border:0;color:var(--mut);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline}
+#toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;font-size:14px;z-index:60;max-width:90%;text-align:center;display:none}#toast.on{display:block}
+.segw{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:3px}.segw button{flex:1;border:0;background:transparent;padding:9px;border-radius:9px;font:inherit;font-size:15px;color:var(--mut);cursor:pointer}.segw button.on{background:var(--card);color:var(--ink);font-weight:700}
 </style>
 </head>
 <body>
@@ -72,7 +74,7 @@ textarea{min-height:70px;resize:vertical}
 
 <div class="seg"><button data-s="open" class="on">Offen</button><button data-s="done">Erlebt</button><button data-s="all">Alle</button></div>
 <div class="tabs" id="cats"></div>
-<div class="toolbar"><button class="link" id="openSync">Mit Luna teilen / Backup</button></div>
+<div class="toolbar"><button class="link" id="openSync" style="text-decoration:none">☁️ Online-Sync einrichten</button></div>
 <div id="list"></div>
 </div>
 
@@ -113,15 +115,27 @@ textarea{min-height:70px;resize:vertical}
 
 <!-- Sync -->
 <div class="sheet" id="sync"><div class="panel">
-<h2>Mit Luna teilen</h2>
-<p class="meta" style="font-size:14px">Die Liste liegt auf diesem Handy. Kopier den Code, schick ihn Luna (z. B. per WhatsApp), und sie fügt ihn bei sich ein. Beim Einfügen werden beide Listen zusammengeführt – nichts geht verloren.</p>
-<button class="btn" id="sCopy">Code kopieren</button>
-<label>Code von Luna einfügen</label>
-<textarea id="sIn" placeholder="Code hier einfügen"></textarea>
-<button class="btn g" id="sMerge">Zusammenführen</button>
+<h2>Online-Sync ☁️</h2>
+<div id="syncOff">
+<p class="meta" style="font-size:14px">Verbindet eure Bucket-List übers Internet. Gebt auf <b>beiden Handys dasselbe Passwort</b> ein – dann seht ihr beide dieselbe Liste, automatisch.</p>
+<label>Wer bist du?</label>
+<div class="segw" id="meSeg"><button data-w="Marc" class="on">Marc</button><button data-w="Luna">Luna</button></div>
+<label>Gemeinsames Passwort</label>
+<input id="pwIn" type="text" autocomplete="off" autocapitalize="off" placeholder="mind. 8 Zeichen">
+<button class="btn" id="pwGo">☁️ Verbinden</button>
+</div>
+<div id="syncOn" class="hide" style="display:none">
+<p style="margin:0 0 4px;font-weight:700" id="syncState"></p>
+<p class="meta" id="syncLast"></p>
+<button class="btn" id="invSend">💌 Luna einladen</button>
+<textarea id="invOut" readonly style="display:none;margin-top:8px"></textarea>
+<button class="btn g" id="syncNow">🔄 Jetzt synchronisieren</button>
+<button class="btn r" id="syncOffBtn">Sync auf diesem Handy trennen</button>
+</div>
 <p class="meta" id="sMsg" style="text-align:center"></p>
 <button class="btn g" data-close>Schließen</button>
 </div></div>
+<div id="toast"></div>
 
 <script>
 const KEY='bucket-marc-luna-v1';
@@ -158,7 +172,7 @@ document.querySelector('.seg').onclick=e=>{const s=e.target.dataset.s;if(!s)retu
 $('cats').onclick=e=>{const c=e.target.dataset.c;if(c){cat=c;render()}};
 $('list').onclick=e=>{
  const t=e.target.closest('[data-tog]'),d=e.target.closest('[data-ed]');
- if(t){const x=S.items.find(i=>i.id==t.dataset.tog);x.done=!x.done;x.dd=x.done?Date.now():null;x.u=Date.now();save();render();if(x.done)openEdit(x.id,true)}
+ if(t){const x=S.items.find(i=>i.id==t.dataset.tog);x.done=!x.done;x.dd=x.done?Date.now():null;x.u=Date.now();save();Sync.dirty(x.id);render();if(x.done)openEdit(x.id,true)}
  else if(d)openEdit(+d.dataset.ed);
 };
 function open(id){$(id).classList.add('open')}
@@ -183,13 +197,13 @@ $('fSave').onclick=()=>{
  let x=S.items.find(i=>i.id===editId);
  if(!x){x={id:Date.now(),done:false};S.items.push(x)}
  Object.assign(x,{t,c:$('fC').value,w:$('fW').value,k:+$('fK').value,d:$('fD').value.trim(),m:$('fM').value.trim(),u:Date.now()});
- save();close();render();
+ save();Sync.dirty(x.id);close();render();
 };
 let delArm=false;
 $('fDel').onclick=()=>{
  if(!delArm){delArm=true;$('fDel').textContent='Wirklich löschen? Nochmal tippen';setTimeout(()=>{delArm=false;$('fDel').textContent='Löschen'},3000);return}
  delArm=false;$('fDel').textContent='Löschen';
- S.items=S.items.filter(i=>i.id!==editId);(S.del=S.del||[]).push(editId);save();close();render();
+ S.items=S.items.filter(i=>i.id!==editId);(S.del=S.del||[]).push(editId);save();Sync.dirty(editId);close();render();
 };
 
 function roll(){
@@ -200,24 +214,108 @@ function roll(){
 }
 $('rndBtn').onclick=()=>{roll();open('rnd')};$('rAgain').onclick=roll;
 
-// Teilen
-$('openSync').onclick=()=>{$('sMsg').textContent='';open('sync')};
-$('sCopy').onclick=async()=>{
- const c='BL1:'+btoa(unescape(encodeURIComponent(JSON.stringify(S))));
- if(window.Android&&Android.share){Android.share(c);$('sMsg').textContent='Wähle WhatsApp und schick den Code an Luna';return}
- try{await navigator.clipboard.writeText(c);$('sMsg').textContent='Kopiert ✓ – jetzt an Luna schicken'}
- catch(e){$('sIn').value=c;$('sMsg').textContent='Code steht im Feld – markieren & kopieren'}
-};
-$('sMerge').onclick=()=>{
- try{
-  const raw=$('sIn').value.trim().replace(/^BL1:/,'');const o=JSON.parse(decodeURIComponent(escape(atob(raw))));
-  const del=new Set([...(S.del||[]),...(o.del||[])]);let n=0;
-  for(const it of o.items||[]){const mine=S.items.find(i=>i.id===it.id);
-   if(!mine){S.items.push(it);n++}else if((it.u||0)>(mine.u||0))Object.assign(mine,it)}
-  S.items=S.items.filter(i=>!del.has(i.id));S.del=[...del];
-  save();render();$('sIn').value='';$('sMsg').textContent=`Zusammengeführt ✓ (${n} neu)`;
- }catch(e){$('sMsg').textContent='Der Code ist ungültig.'}
-};
+// ---------- Online-Sync (Supabase, gleiche Datenbank wie das Tagebuch) ----------
+function toast(t,ms){$('toast').textContent=t;$('toast').classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>$('toast').classList.remove('on'),ms||3500)}
+const Sync=(()=>{
+ const SUPA_URL='https://evzyaroqduvkcxnpuaup.supabase.co',SUPA_KEY='sb_publishable_x4geiOGEC3KDpGnpqBsPgQ_rPEuVyVb';
+ const APK='https://github.com/mmmichelma/mmmichelma.github.io/releases/download/bucketlist/BucketList.apk';
+ const CK='bucket-cloud',QK='bucket-dirty';
+ let C=null,busy=false,again=false,timer=null,poll=null,state='off',err='';
+ try{C=JSON.parse(localStorage.getItem(CK))}catch(e){}
+ const saveC=()=>{try{C?localStorage.setItem(CK,JSON.stringify(C)):localStorage.removeItem(CK)}catch(e){}};
+ const getQ=()=>{try{return JSON.parse(localStorage.getItem(QK))||[]}catch(e){return []}};
+ const setQ=q=>{try{localStorage.setItem(QK,JSON.stringify(q))}catch(e){}};
+ function sha256(str){const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const b=Array.from(new TextEncoder().encode(str)),l=b.length*8;b.push(0x80);while(b.length%64!==56)b.push(0);for(let i=7;i>=0;i--)b.push(Math.floor(l/Math.pow(2,i*8))&255);
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];const r=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let o=0;o<b.length;o+=64){const w=new Array(64);for(let i=0;i<16;i++)w[i]=(b[o+4*i]<<24)|(b[o+4*i+1]<<16)|(b[o+4*i+2]<<8)|b[o+4*i+3];
+   for(let i=16;i<64;i++){const s0=r(w[i-15],7)^r(w[i-15],18)^(w[i-15]>>>3),s1=r(w[i-2],17)^r(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0}
+   let [a,bb,c,d,e,f,g,h]=H;
+   for(let i=0;i<64;i++){const S1=r(e,6)^r(e,11)^r(e,25),ch=(e&f)^(~e&g),t1=(h+S1+ch+K[i]+w[i])|0,S0=r(a,2)^r(a,13)^r(a,22),mj=(a&bb)^(a&c)^(bb&c),t2=(S0+mj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=bb;bb=a;a=(t1+t2)|0}
+   H=[H[0]+a,H[1]+bb,H[2]+c,H[3]+d,H[4]+e,H[5]+f,H[6]+g,H[7]+h].map(x=>x|0)}
+  return H.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('')}
+ const roomFor=pw=>'bl_'+sha256('bucket-list|'+pw.trim().toLowerCase());
+ const T=SUPA_URL+'/rest/v1/eintraege';
+ const H=()=>({'apikey':SUPA_KEY,'x-room':C.r,'Content-Type':'application/json'});
+ async function call(method,url,body,extra){
+  const r=await fetch(url,{method,headers:Object.assign(H(),extra||{}),body:body===undefined?undefined:JSON.stringify(body)});
+  const t=await r.text();let j=null;try{j=JSON.parse(t)}catch(x){}
+  if(!r.ok){const m=(j&&(j.message||j.msg||j.error))||('HTTP '+r.status);throw new Error(r.status===401?'Schlüssel ungültig.':/row-level|permission/i.test(m)?'Zugriff verweigert.':m)}
+  return j;
+ }
+ const dels=()=>new Set((S.del||[]).map(String));
+ async function push(){
+  let q=getQ();if(!q.length)return;
+  const rows=[];
+  for(const id of q){
+   const it=S.items.find(i=>String(i.id)===id);
+   if(it)rows.push({room:C.r,id,data:{t:it.t,c:it.c,w:it.w,k:it.k,d:it.d||'',m:it.m||'',done:!!it.done,dd:it.dd||null},ts:it.u||it.id||0,deleted:false});
+   else if(dels().has(id))rows.push({room:C.r,id,data:{},ts:Date.now(),deleted:true});
+  }
+  for(let i=0;i<rows.length;i+=100)await call('POST',T,rows.slice(i,i+100),{'Prefer':'resolution=merge-duplicates,return=minimal'});
+  const sent=new Set(q);setQ(getQ().filter(id=>!sent.has(id)));
+ }
+ function apply(x){
+  const id=isNaN(+x.id)?x.id:+x.id,local=S.items.find(i=>String(i.id)===String(x.id)),ts=+(x.ts||0);
+  if(x.deleted){if(local&&(local.u||0)<=ts){S.items=S.items.filter(i=>i!==local)}if(!dels().has(String(x.id)))(S.del=S.del||[]).push(id);return !!local}
+  if(dels().has(String(x.id)))return false;
+  const d=x.data||{};const rec={id,t:d.t||'',c:d.c||'Sonstiges',w:d.w||'Beide',k:+d.k||0,d:d.d||'',m:d.m||'',done:!!d.done,dd:d.dd||null,u:ts};
+  if(!local){S.items.push(rec);return true}
+  if(ts>(local.u||0)){Object.assign(local,rec);return true}
+  return false;
+ }
+ async function pull(){
+  let n=0;
+  for(let round=0;round<100;round++){
+   const res=await call('GET',T+'?select=id,data,ts,deleted,updated_at&room=eq.'+encodeURIComponent(C.r)+'&updated_at=gt.'+encodeURIComponent(C.last||'1970-01-01T00:00:00Z')+'&order=updated_at.asc&limit=200');
+   const list=Array.isArray(res)?res:[];
+   for(const x of list){if(apply(x))n++;C.last=x.updated_at||C.last}
+   saveC();if(list.length<200)break;
+  }
+  if(n){save();render()}
+  return n;
+ }
+ async function run(){
+  if(!C)return;if(busy){again=true;return}
+  busy=true;state='busy';ui();
+  try{await push();const n=await pull();C.ok=Date.now();saveC();state='on';err='';
+   if(n&&!document.hidden)toast('☁️ Liste aktualisiert ('+n+' Änderung'+(n===1?'':'en')+')')}
+  catch(e){state='err';err=navigator.onLine===false?'Kein Internet – synchronisiert später automatisch.':(e.message||'Keine Verbindung')}
+  busy=false;ui();if(again){again=false;setTimeout(run,300)}
+ }
+ function dirty(id){const q=getQ(),k=String(id);if(!q.includes(k)){q.push(k);setQ(q)}if(C){clearTimeout(timer);timer=setTimeout(run,800)}}
+ function startPoll(){clearInterval(poll);if(C)poll=setInterval(()=>{if(!document.hidden)run()},20000)}
+ const show=(el,v)=>{el.style.display=v?'':'none';el.classList.toggle('hide',!v)};
+ function ui(){
+  const on=!!C;show($('syncOff'),!on);show($('syncOn'),on);
+  const icon={busy:'🔄',on:'✅',err:'⚠️'}[state]||'☁️';
+  const ago=C&&C.ok?new Date(C.ok).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'';
+  const other=C&&C.me==='Luna'?'Marc':'Luna';
+  $('openSync').textContent=!on?'☁️ Online-Sync einrichten':state==='err'?'⚠️ Sync-Problem – antippen':state==='busy'?'🔄 Synchronisiere …':'✅ Mit '+other+' synchronisiert';
+  if(on){$('syncState').textContent=icon+(state==='err'?' Problem':' Verbunden mit '+other);$('syncLast').textContent=state==='err'?err:(ago?'Zuletzt: '+ago+' Uhr · automatisch alle 20 s':'');$('invSend').textContent='💌 '+other+' einladen'}
+ }
+ let me='Marc';
+ $('meSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;me=b.dataset.w;document.querySelectorAll('#meSeg button').forEach(x=>x.classList.toggle('on',x===b))};
+ $('pwGo').onclick=async()=>{const pw=$('pwIn').value.trim();
+  if(pw.length<8){$('sMsg').textContent='Bitte mindestens 8 Zeichen.';return}
+  C={r:roomFor(pw),pw,me,last:'',ok:0};saveC();
+  setQ([...new Set([...getQ(),...S.items.map(i=>String(i.id)),...(S.del||[]).map(String)])]);
+  $('sMsg').textContent='Verbinde …';await run();startPoll();
+  $('sMsg').textContent=state==='on'?'✅ Verbunden!':'⚠️ '+err};
+ $('invSend').onclick=()=>{const other=C.me==='Luna'?'Marc':'Luna';
+  const msg=`💛 Unsere Bucket-List!\n1. App installieren: ${APK}\n2. App öffnen → unten „☁️ Online-Sync einrichten“\n3. „${other}“ wählen und dieses Passwort eingeben: ${C.pw}\n4. Verbinden – fertig!`;
+  if(window.Android&&Android.shareText){Android.shareText(msg);return}
+  $('invOut').value=msg;$('invOut').style.display='';
+  try{navigator.clipboard.writeText(msg).then(()=>$('sMsg').textContent='Kopiert ✓')}catch(e){}};
+ $('syncNow').onclick=()=>{$('sMsg').textContent='';run()};
+ let offArm=false;
+ $('syncOffBtn').onclick=()=>{if(!offArm){offArm=true;$('syncOffBtn').textContent='Wirklich trennen? Nochmal tippen';setTimeout(()=>{offArm=false;$('syncOffBtn').textContent='Sync auf diesem Handy trennen'},3000);return}
+  C=null;saveC();clearInterval(poll);state='off';$('sMsg').textContent='Getrennt. Die Liste bleibt auf dem Handy.';ui()};
+ $('openSync').onclick=()=>{$('sMsg').textContent='';open('sync');if(C)run()};
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&C)run()});
+ window.addEventListener('online',()=>{if(C)run()});
+ return {start(){ui();if(C){run();startPoll()}},dirty,get on(){return !!C}};
+})();
 // Dark Mode: auto / hell / dunkel
 const TKEY='bucket-theme';let theme='auto';try{theme=localStorage.getItem(TKEY)||'auto'}catch(e){}
 const mq=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
@@ -234,6 +332,7 @@ if(mq&&mq.addEventListener)mq.addEventListener('change',applyTheme);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)applyTheme()});
 applyTheme();
 render();
+Sync.start();
 </script>
 </body>
 </html>
