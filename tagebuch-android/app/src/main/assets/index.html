@@ -27,7 +27,7 @@ h1{font-size:25px;margin:0;letter-spacing:-.3px}
 .slot.has{border-style:solid;background:var(--card)}
 .slot .who{font-weight:700;font-size:14px}
 .slot .tx{font-size:14px;margin-top:6px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
-.slot img{width:100%;height:90px;object-fit:cover;border-radius:10px;margin-top:8px}
+.slot img{width:100%;height:170px;object-fit:cover;border-radius:10px;margin-top:8px}
 .slot .add{margin:auto;color:var(--mut);font-size:14px;text-align:center}
 .slot .add span{display:block;font-size:26px}
 .M{color:var(--m)}.L{color:var(--l)}
@@ -36,13 +36,20 @@ h1{font-size:25px;margin:0;letter-spacing:-.3px}
 .day{margin-bottom:14px}
 .dayh{font-size:13px;color:var(--mut);font-weight:600;margin:16px 2px 6px;text-transform:uppercase;letter-spacing:.4px}
 .entry{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:8px;cursor:pointer}
-.entry{position:relative}.entry img{width:100%;max-height:340px;object-fit:cover;display:block}
+.entry{position:relative}.entry img{width:100%;height:auto;max-height:none;object-fit:contain;display:block;background:#000}
 .savebtn{position:absolute;top:10px;right:10px;border:0;border-radius:20px;padding:7px 12px;background:rgba(0,0,0,.55);color:#fff;font:inherit;font-size:13px;cursor:pointer}
 .entry .b{padding:12px}
 .entry .w{font-size:13px;font-weight:700}
 .entry .t{margin-top:4px;line-height:1.4}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
-.grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer;display:block}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.grid img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;cursor:pointer;display:block}
+#viewer{background:#000;align-items:stretch;z-index:70;flex-direction:column}
+#viewer .vs{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;touch-action:pan-x pan-y}
+#viewer .vs img{width:100%;height:auto;max-width:none;display:block;margin:auto}
+#viewer .vbar{display:flex;gap:8px;padding:10px 12px calc(14px + env(safe-area-inset-bottom));background:#000}
+#viewer .vbar button{flex:1;border:0;border-radius:12px;padding:12px;font:inherit;font-weight:600;background:#222;color:#fff;cursor:pointer}
+#viewer .vcap{color:#fff;padding:12px 14px 0;font-size:14px;opacity:.85}
+#viewer .vx{position:absolute;top:12px;right:12px;z-index:2;background:rgba(255,255,255,.15);border:0;color:#fff;font-size:20px;width:42px;height:42px;border-radius:50%}
 .empty{text-align:center;color:var(--mut);padding:36px 12px}
 input,textarea,select{width:100%;font:inherit;font-size:16px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
 textarea{min-height:90px;resize:vertical}
@@ -180,6 +187,8 @@ nav.tab button.on{color:var(--acc);font-weight:700}
  <button class="btn g" data-close>Schließen</button>
 </div></div>
 
+<div class="sheet" id="viewer"><button class="vx" id="vX">✕</button><div class="vcap" id="vCap"></div><div class="vs" id="vS"><img id="vImg" alt=""></div>
+<div class="vbar"><button id="vZoom">🔍 Zoom</button><button id="vSave">⬇️ Speichern</button><button id="vDay">📖 Eintrag</button></div></div>
 <div id="toast"></div>
 <div id="show"><div class="bars" id="sBars"></div><button class="x" id="sX">✕</button><div class="img" id="sImg"><div class="cap"><div class="d" id="sD"></div><div class="q" id="sQ"></div></div></div></div>
 
@@ -248,7 +257,7 @@ function streaks(){
  return {cur,best,today:days.has(todayISO())};
 }
 function entryHTML(e){
- return `<div class="entry" data-e="${e.id}">${e.photo?`<img src="${e.photo}" alt=""><button class="savebtn" data-save="${e.id}">⬇️ Foto speichern</button>`:''}<div class="b"><div class="w ${e.who[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${esc(e.who)}</div>${e.text?`<div class="t">${esc(e.text)}</div>`:''}</div></div>`;
+ return `<div class="entry" data-e="${e.id}">${e.photo?`<img src="${e.photo}" data-view="${e.id}" alt=""><button class="savebtn" data-save="${e.id}">⬇️ Foto speichern</button>`:''}<div class="b"><div class="w ${e.who[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${esc(e.who)}</div>${e.text?`<div class="t">${esc(e.text)}</div>`:''}</div></div>`;
 }
 
 /* ---------- Render ---------- */
@@ -261,7 +270,7 @@ function render(){
   $('prompt').textContent=promptFor(t);
   const today=E.filter(e=>e.date===t);
   $('slots').innerHTML=['Marc','Luna'].map(w=>{const e=today.find(x=>x.who===w);
-   return e?`<button class="slot has" data-e="${e.id}"><div class="who ${w[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${w}</div>${e.text?`<div class="tx">${esc(e.text)}</div>`:''}${e.photo?`<img src="${e.photo}" alt="">`:''}</button>`
+   return e?`<button class="slot has" data-e="${e.id}"><div class="who ${w[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${w}</div>${e.text?`<div class="tx">${esc(e.text)}</div>`:''}${e.photo?`<img src="${e.photo}" data-view="${e.id}" alt="">`:''}</button>`
    :`<button class="slot" data-new="${w}"><div class="who ${w[0]}">${w}</div><div class="add"><span>＋</span>Heute schreiben</div></button>`}).join('');
   // Weißt du noch?
   const m=byDate();let fd=null,lab='';
@@ -283,7 +292,7 @@ function render(){
   const ph=E.filter(e=>e.photo).sort((a,b)=>a.date<b.date?1:-1);
   if(!ph.length){$('album').innerHTML='<div class="empty">Noch keine Fotos.<br>Häng an euren nächsten Eintrag ein Bild 📷</div>';return}
   const g={};ph.forEach(e=>{const k=e.date.slice(0,7);(g[k]=g[k]||[]).push(e)});
-  $('album').innerHTML=Object.keys(g).map(k=>`<div class="dayh">${parse(k+'-01').toLocaleDateString('de-DE',{month:'long',year:'numeric'})} · ${g[k].length}</div><div class="grid">${g[k].map(e=>`<img src="${e.photo}" data-day="${e.date}" alt="">`).join('')}</div>`).join('');
+  $('album').innerHTML=Object.keys(g).map(k=>`<div class="dayh">${parse(k+'-01').toLocaleDateString('de-DE',{month:'long',year:'numeric'})} · ${g[k].length}</div><div class="grid">${g[k].map(e=>`<img src="${e.photo}" data-view="${e.id}" alt="">`).join('')}</div>`).join('');
  }
  if(view==='mehr'){
   const s=streaks(),days=new Set(E.map(e=>e.date)).size,ph=E.filter(e=>e.photo).length;
@@ -297,6 +306,8 @@ $('q').oninput=render;
 
 /* ---------- Klicks auf Einträge / Tage ---------- */
 document.addEventListener('click',e=>{
+ const vw=e.target.closest('[data-view]');
+ if(vw){e.stopPropagation();openViewer(vw.dataset.view);return}
  const sv=e.target.closest('[data-save]');
  if(sv){e.stopPropagation();savePhoto(E.find(x=>x.id===sv.dataset.save));return}
  const en=e.target.closest('[data-e]'),nw=e.target.closest('[data-new]'),dy=e.target.closest('[data-day]');
@@ -305,6 +316,32 @@ document.addEventListener('click',e=>{
  else if(nw)openEd(null,nw.dataset.new);
  else if(dy)openDay(dy.dataset.day);
 });
+let vEntry=null,vScale=1;
+function setScale(z,cx,cy){
+ const box=$('vS'),img=$('vImg');z=Math.max(1,Math.min(5,z));
+ const fx=(box.scrollLeft+(cx==null?box.clientWidth/2:cx))/img.offsetWidth,fy=(box.scrollTop+(cy==null?box.clientHeight/2:cy))/Math.max(1,img.offsetHeight);
+ vScale=z;img.style.width=(100*z)+'%';box.style.alignItems=z>1?'flex-start':'center';box.style.justifyContent=z>1?'flex-start':'center';
+ box.scrollLeft=fx*img.offsetWidth-(cx==null?box.clientWidth/2:cx);box.scrollTop=fy*img.offsetHeight-(cy==null?box.clientHeight/2:cy);
+ $('vZoom').textContent=z>1?'↩︎ Ganzes Bild':'🔍 Zoom';
+}
+function openViewer(id){
+ vEntry=E.find(x=>x.id===id);if(!vEntry||!vEntry.photo)return;
+ $('vImg').src=vEntry.photo;$('vCap').textContent=nice(vEntry.date,{day:'numeric',month:'long',year:'numeric'})+' · '+vEntry.who+(vEntry.text?' – '+vEntry.text:'');
+ $('viewer').classList.add('open');setScale(1);
+}
+$('vX').onclick=()=>$('viewer').classList.remove('open');
+$('vZoom').onclick=()=>setScale(vScale>1?1:2.5);
+$('vSave').onclick=()=>savePhoto(vEntry);
+$('vDay').onclick=()=>{$('viewer').classList.remove('open');openDay(vEntry.date)};
+// Doppeltippen = Zoom, zwei Finger = stufenlos zoomen
+(()=>{const box=$('vS');let last=0,d0=0,z0=1;
+ const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+ box.addEventListener('touchstart',e=>{if(e.touches.length===2){d0=dist(e.touches);z0=vScale;e.preventDefault()}
+  else{const n=Date.now();if(n-last<300){const r=box.getBoundingClientRect();setScale(vScale>1?1:2.5,e.touches[0].clientX-r.left,e.touches[0].clientY-r.top);e.preventDefault()}last=n}},{passive:false});
+ box.addEventListener('touchmove',e=>{if(e.touches.length===2&&d0){const r=box.getBoundingClientRect();const cx=(e.touches[0].clientX+e.touches[1].clientX)/2-r.left,cy=(e.touches[0].clientY+e.touches[1].clientY)/2-r.top;setScale(z0*dist(e.touches)/d0,cx,cy);e.preventDefault()}},{passive:false});
+ box.addEventListener('touchend',e=>{if(e.touches.length<2)d0=0});
+ box.addEventListener('dblclick',e=>{const r=box.getBoundingClientRect();setScale(vScale>1?1:2.5,e.clientX-r.left,e.clientY-r.top)});
+})();
 function savePhoto(e){
  if(!e||!e.photo)return;
  const name='Tagebuch_'+e.date+'_'+e.who+'.jpg';
