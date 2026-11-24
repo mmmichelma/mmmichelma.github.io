@@ -121,6 +121,14 @@ nav.tab button.on{color:var(--acc);font-weight:700}
 <!-- MEHR -->
 <section id="v-mehr" class="hide">
  <div class="card"><h2>Unsere Statistik</h2><div class="stats" id="stats"></div></div>
+ <div class="card"><h2>Tageskarten exportieren 📸</h2>
+  <p class="note">Für jeden Tag entsteht ein Bild mit Datum, euren Fotos, Gefühlen und Sätzen. Die Bilder landen in der Galerie im Album „Unser Tagebuch Tageskarten“.</p>
+  <div class="seg" id="exRange"><button data-r="7">7 Tage</button><button data-r="30" class="on">30 Tage</button><button data-r="365">1 Jahr</button><button data-r="0">Alles</button></div>
+  <button class="btn g" id="exPrev">👁️ Vorschau (letzter Tag)</button>
+  <button class="btn" id="exGo">📸 Tageskarten exportieren</button>
+  <p class="note" id="exMsg" style="text-align:center"></p>
+  <img id="exImg" class="hide" alt="" style="width:100%;border-radius:12px;margin-top:8px;border:1px solid var(--line)">
+ </div>
  <div class="card"><h2>Rückblick</h2>
   <p class="note">Alle Momente als Diashow, wie Stories. Perfekt für euren Jahrestag oder Silvester.</p>
   <div class="seg" id="showRange"><button data-r="30" class="on">30 Tage</button><button data-r="365">1 Jahr</button><button data-r="0">Alles</button></div>
@@ -342,6 +350,89 @@ $('vDay').onclick=()=>{$('viewer').classList.remove('open');openDay(vEntry.date)
  box.addEventListener('touchend',e=>{if(e.touches.length<2)d0=0});
  box.addEventListener('dblclick',e=>{const r=box.getBoundingClientRect();setScale(vScale>1?1:2.5,e.clientX-r.left,e.clientY-r.top)});
 })();
+/* ---------- Tageskarten (Bild pro Tag) ---------- */
+const loadImg=src=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src});
+function wrap(ctx,text,maxW,maxLines){
+ const words=String(text||'').split(/\s+/);const lines=[];let line='';
+ for(const w of words){const t=line?line+' '+w:w;if(ctx.measureText(t).width>maxW&&line){lines.push(line);line=w}else line=t}
+ if(line)lines.push(line);
+ if(lines.length>maxLines){lines.length=maxLines;let l=lines[maxLines-1];while(ctx.measureText(l+'…').width>maxW&&l.length)l=l.slice(0,-1);lines[maxLines-1]=l+'…'}
+ return lines;
+}
+function rrect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+async function drawCard(date){
+ const W=1080,H=1920,P=48,F='system-ui,-apple-system,"Segoe UI",Roboto,sans-serif',R=36,IN=22;
+ const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+ const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#f8f5fb');g.addColorStop(1,'#efe7f7');x.fillStyle=g;x.fillRect(0,0,W,H);
+ const d=parse(date);
+ x.fillStyle='#7a5c9e';x.font=`600 36px ${F}`;x.fillText(d.toLocaleDateString('de-DE',{weekday:'long'}).toUpperCase(),P,92);
+ x.fillStyle='#251f2b';x.font=`800 76px ${F}`;x.fillText(d.toLocaleDateString('de-DE',{day:'numeric',month:'long',year:'numeric'}),P,178);
+ x.fillStyle='#7f7689';x.font=`500 30px ${F}`;x.fillText('„'+promptFor(date)+'“',P,232);
+ x.fillStyle='#a59cae';x.font=`600 30px ${F}`;x.fillText('Unser Tagebuch 💛 Marc & Luna',P,H-50);
+ const es=['Marc','Luna'].map(w=>E.find(e=>e.date===date&&e.who===w)).filter(Boolean);
+ const top=270,bottom=H-100,gap=28,A=bottom-top;
+ if(!es.length){x.fillStyle='#7f7689';x.font=`500 40px ${F}`;x.fillText('Kein Eintrag an diesem Tag',P,top+80);return c.toDataURL('image/jpeg',.9)}
+ const imgs=await Promise.all(es.map(e=>e.photo?loadImg(e.photo):null));
+ const cols=es.length===2&&imgs[0]&&imgs[1]&&imgs.every(i=>i.height>i.width*1.05);
+ const bw=cols?(W-2*P-gap)/2:W-2*P,iw=bw-2*IN;
+ const fs=cols?34:(es.length===1?44:38),lh=Math.round(fs*1.32),head=96;
+ // Textzeilen vorab messen
+ const L=es.map(e=>{x.font=`500 ${fs}px ${F}`;return e.text?wrap(x,e.text,iw-8,cols?9:7):[]});
+ const tH=L.map(l=>head+l.length*lh+(l.length?18:0)+IN);
+ // Fotohöhen verteilen
+ let ph=imgs.map(()=>0);
+ if(cols){const m=Math.max(...tH);ph=imgs.map(im=>Math.min(iw*im.height/im.width,A-m-IN));const h=Math.min(...ph);ph=[h,h]}
+ else{
+  const fixed=es.reduce((t,e,i)=>t+tH[i]+(imgs[i]?IN:0),0)+gap*(es.length-1);
+  const withP=imgs.filter(Boolean).length;let free=A-fixed;
+  ph=imgs.map(im=>im?Math.min(iw*im.height/im.width,free/withP):0);
+  // was übrig ist, an die anderen Fotos verteilen
+  let rest=free-ph.reduce((a,b)=>a+b,0);for(let k=0;k<3&&rest>1;k++){const open=imgs.map((im,i)=>im&&ph[i]<iw*im.height/im.width?i:-1).filter(i=>i>=0);if(!open.length)break;const add=rest/open.length;open.forEach(i=>{const mx=iw*imgs[i].height/imgs[i].width;const n=Math.min(mx,ph[i]+add);rest-=n-ph[i];ph[i]=n})}
+ }
+ const bh=es.map((e,i)=>(imgs[i]?IN+ph[i]:0)+tH[i]);
+ const used=cols?Math.max(...bh):bh.reduce((a,b)=>a+b,0)+gap*(es.length-1);
+ let y0=top+Math.max(0,(A-used)/2);
+ for(let i=0;i<es.length;i++){
+  const e=es[i],col=e.who==='Marc'?'#3f7fbf':'#d0587e';
+  const bx=cols?P+i*(bw+gap):P,by=cols?y0:y0,h=cols?Math.max(...bh):bh[i];
+  x.save();x.shadowColor='rgba(60,30,90,.12)';x.shadowBlur=30;x.shadowOffsetY=8;x.fillStyle='#fff';rrect(x,bx,by,bw,h,R);x.fill();x.restore();
+  let ty=by+IN;
+  if(imgs[i]){const im=imgs[i],h2=ph[i];
+   x.save();rrect(x,bx+IN,ty,iw,h2,24);x.clip();
+   const sc=Math.max(iw/im.width,h2/im.height);x.filter='blur(30px) brightness(.85)';x.drawImage(im,bx+IN+(iw-im.width*sc)/2,ty+(h2-im.height*sc)/2,im.width*sc,im.height*sc);x.filter='none';
+   const s2=Math.min(iw/im.width,h2/im.height);x.drawImage(im,bx+IN+(iw-im.width*s2)/2,ty+(h2-im.height*s2)/2,im.width*s2,im.height*s2);
+   x.restore();ty+=h2}
+  ty+=70;
+  x.font=`${cols?54:62}px ${F}`;x.fillStyle='#000';x.fillText(e.mood!=null?MOODS[e.mood]:'💬',bx+IN+4,ty);
+  x.fillStyle=col;x.font=`800 ${cols?38:44}px ${F}`;x.fillText(e.who,bx+IN+(cols?76:90),ty-8);
+  x.fillStyle='#251f2b';x.font=`500 ${fs}px ${F}`;L[i].forEach((l,k)=>x.fillText(l,bx+IN+4,ty+20+lh*(k+1)-8));
+  if(!cols)y0+=h+gap;
+ }
+ return c.toDataURL('image/jpeg',.9);
+}
+let exR=30,exBusy=false;
+$('exRange').onclick=e=>{const b=e.target.closest('button');if(!b)return;exR=+b.dataset.r;document.querySelectorAll('#exRange button').forEach(x=>x.classList.toggle('on',x===b))};
+$('exPrev').onclick=async()=>{
+ const days=[...new Set(E.map(e=>e.date))].sort();if(!days.length){$('exMsg').textContent='Noch keine Einträge.';return}
+ $('exMsg').textContent='Erstelle Vorschau …';const u=await drawCard(days[days.length-1]);
+ $('exImg').src=u;$('exImg').classList.remove('hide');$('exMsg').textContent='So sieht eine Tageskarte aus:';
+};
+$('exGo').onclick=async()=>{
+ if(exBusy)return;
+ const from=exR?addDays(todayISO(),-(exR-1)):'0000';
+ const days=[...new Set(E.map(e=>e.date))].filter(d=>d>=from).sort();
+ if(!days.length){$('exMsg').textContent='Keine Einträge in diesem Zeitraum.';return}
+ if(!(window.Android&&Android.saveCard)){$('exMsg').textContent='Exportieren geht in der Android-App. Hier siehst du nur die Vorschau.';$('exPrev').click();return}
+ exBusy=true;$('exGo').disabled=true;let ok=0;
+ for(let i=0;i<days.length;i++){
+  $('exMsg').textContent=`Exportiere ${i+1} von ${days.length} … bitte App offen lassen`;
+  try{const u=await drawCard(days[i]);if(Android.saveCard('Tageskarte_'+days[i]+'.jpg',u))ok++}catch(e){}
+  await new Promise(r=>setTimeout(r,30));
+ }
+ exBusy=false;$('exGo').disabled=false;
+ $('exMsg').textContent=`✅ ${ok} Tageskarten gespeichert – Galerie → Album „Unser Tagebuch Tageskarten“`;
+};
+
 function savePhoto(e){
  if(!e||!e.photo)return;
  const name='Tagebuch_'+e.date+'_'+e.who+'.jpg';

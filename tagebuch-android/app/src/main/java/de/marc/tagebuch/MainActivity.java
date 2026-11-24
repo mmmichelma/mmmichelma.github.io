@@ -114,40 +114,39 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean saveJpeg(String name, String dataUrl, String folder) {
+        try {
+            byte[] bytes = Base64.decode(dataUrl.substring(dataUrl.indexOf(',') + 1), Base64.DEFAULT);
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.Images.Media.DISPLAY_NAME, name);
+                v.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/" + folder);
+                Uri u = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                if (u == null) return false;
+                try (OutputStream o = getContentResolver().openOutputStream(u)) { o.write(bytes); }
+            } else {
+                File dir = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), folder);
+                dir.mkdirs();
+                try (FileOutputStream o = new FileOutputStream(new File(dir, name))) { o.write(bytes); }
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     class Bridge {
         // Foto in die Galerie speichern (Bilder/Unser Tagebuch)
         @JavascriptInterface
         public String saveImage(String name, String dataUrl) {
-            try {
-                byte[] bytes = Base64.decode(dataUrl.substring(dataUrl.indexOf(',') + 1), Base64.DEFAULT);
-                if (Build.VERSION.SDK_INT >= 29) {
-                    ContentValues v = new ContentValues();
-                    v.put(MediaStore.Images.Media.DISPLAY_NAME, name);
-                    v.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-                    v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Unser Tagebuch");
-                    Uri u = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
-                    try (OutputStream o = getContentResolver().openOutputStream(u)) { o.write(bytes); }
-                    return "Bilder/Unser Tagebuch";
-                } else {
-                    File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-                    File f = new File(dir, name);
-                    try (FileOutputStream o = new FileOutputStream(f)) { o.write(bytes); }
-                    return f.getAbsolutePath();
-                }
-            } catch (Exception e) {
-                return "";
-            }
+            return saveJpeg(name, dataUrl, "Unser Tagebuch") ? "Bilder/Unser Tagebuch" : "";
         }
 
-        // Einladung als Text verschicken (WhatsApp usw.)
+        // Tageskarte speichern (Bilder/Unser Tagebuch Tageskarten)
         @JavascriptInterface
-        public void shareText(final String text) {
-            runOnUiThread(() -> {
-                Intent i = new Intent(Intent.ACTION_SEND);
-                i.setType("text/plain");
-                i.putExtra(Intent.EXTRA_TEXT, text);
-                startActivity(Intent.createChooser(i, "Einladung an Luna schicken"));
-            });
+        public boolean saveCard(String name, String dataUrl) {
+            return saveJpeg(name, dataUrl, "Unser Tagebuch Tageskarten");
         }
 
         @JavascriptInterface
