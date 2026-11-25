@@ -1,0 +1,12 @@
+{
+  "name": "AVR-Werkstatt ATmega8",
+  "short_name": "AVR-Werkstatt",
+  "description": "ATmega8 in C programmieren und mit Schrittmotor simulieren",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14171d",
+  "theme_color": "#1b1f27",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

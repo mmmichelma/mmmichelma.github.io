@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#1b1f27">
+<meta name="description" content="Entwicklungsumgebung und Simulator für den ATmega8 mit Schrittmotor – in C programmieren direkt im Browser.">
+<title>AVR-Werkstatt ATmega8</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="vendor/codemirror/codemirror.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><img src="icon.svg" alt="" width="26" height="26"><span>AVR-Werkstatt <b>ATmega8</b></span></div>
+
+  <div class="toolbar" role="toolbar" aria-label="Programm steuern">
+    <button id="btnRun" class="tb primary" title="Übersetzen und starten (F5)"><span class="ic">▶</span><span class="lbl">Start</span></button>
+    <button id="btnPause" class="tb" title="Anhalten (F6)" disabled><span class="ic">❚❚</span><span class="lbl">Pause</span></button>
+    <button id="btnStep" class="tb" title="Einzelschritt: nächste Anweisung (F10)"><span class="ic">⤵</span><span class="lbl">Schritt</span></button>
+    <button id="btnStop" class="tb" title="Stoppen (Umschalt+F5)" disabled><span class="ic">■</span><span class="lbl">Stopp</span></button>
+    <button id="btnCheck" class="tb" title="Nur übersetzen / Fehler prüfen (F7)"><span class="ic">✓</span><span class="lbl">Prüfen</span></button>
+    <label class="speed" title="Simulationsgeschwindigkeit">
+      <span class="lbl">Tempo</span>
+      <select id="selSpeed">
+        <option value="0.01">0,01×</option>
+        <option value="0.05">0,05×</option>
+        <option value="0.1">0,1×</option>
+        <option value="0.25">0,25×</option>
+        <option value="0.5">0,5×</option>
+        <option value="1" selected>1× Echtzeit</option>
+        <option value="2">2×</option>
+        <option value="5">5×</option>
+        <option value="10">10×</option>
+        <option value="max">Maximum</option>
+      </select>
+    </label>
+    <span id="status" class="status idle">Bereit</span>
+  </div>
+
+  <div class="toolbar right">
+    <select id="selExample" title="Beispielprogramm laden"><option value="">📚 Beispiele …</option></select>
+    <button id="btnFiles" class="tb" title="Programme öffnen und speichern"><span class="ic">📁</span><span class="lbl">Dateien</span></button>
+    <button id="btnSettings" class="tb" title="Schaltung und Motor einstellen"><span class="ic">⚙</span><span class="lbl">Schaltung</span></button>
+    <button id="btnHelp" class="tb" title="Hilfe und Befehlsübersicht"><span class="ic">?</span><span class="lbl">Hilfe</span></button>
+    <button id="btnTheme" class="tb icon-only" title="Hell/Dunkel umschalten"><span class="ic">◐</span></button>
+  </div>
+</header>
+
+<main class="layout" id="layout">
+  <!-- ============ Links: Hardware ============ -->
+  <section class="hw" id="hw" aria-label="Simulierte Schaltung">
+    <div class="card chip-card">
+      <div class="card-h"><h2>Mikrocontroller</h2><span class="legend"><i class="lg out1"></i>HIGH <i class="lg out0"></i>LOW <i class="lg in"></i>Eingang <i class="lg pu"></i>Pull-up</span></div>
+      <svg id="chip" class="chip" role="img" aria-label="ATmega8 Pinbelegung mit aktuellem Zustand"></svg>
+    </div>
+
+    <div class="card motor-card" id="motorCard">
+      <div class="card-h"><h2>Schrittmotor</h2><button class="mini" data-act="zero" title="Winkel und Schrittzähler auf 0 setzen">Nullen</button></div>
+      <div class="m-title" data-m="title"></div>
+      <div class="motor-wrap">
+        <svg class="motor-svg" role="img" aria-label="Motorwelle"></svg>
+        <div class="motor-side">
+          <div class="field-box">
+            <svg class="field-svg" role="img" aria-label="Spulen und Magnetfeld"></svg>
+            <small>Spulen &amp; Rotor (elektrisch)</small>
+          </div>
+          <div class="drv" title="Kontroll-LEDs auf der Treiberplatine">
+            <div class="drv-led"><i></i><b>IN1</b><small>PB0</small></div>
+            <div class="drv-led"><i></i><b>IN2</b><small>PB1</small></div>
+            <div class="drv-led"><i></i><b>IN3</b><small>PB2</small></div>
+            <div class="drv-led"><i></i><b>IN4</b><small>PB3</small></div>
+          </div>
+        </div>
+      </div>
+      <div class="m-stats">
+        <div><small>Winkel</small><b data-m="angle">0°</b></div>
+        <div><small>Schritte</small><b data-m="steps">0</b></div>
+        <div><small>Umdrehungen</small><b data-m="turns">0</b></div>
+        <div><small>U/min</small><b data-m="rpm">0</b></div>
+      </div>
+      <div class="m-status off" data-m="status">Spulen aus (Motor frei)</div>
+    </div>
+
+    <div class="card ctrl-card" id="controls">
+      <div class="card-h"><h2>Bedienelemente</h2><span class="hint">Tasten <kbd>1</kbd> <kbd>2</kbd> · Umschalt+Klick = rastet ein</span></div>
+      <div class="ctrls">
+        <div class="btn-box"><button class="push" data-btn="0" aria-label="Taster S1"><span></span></button><small data-btnlabel="0">S1 · PD2</small></div>
+        <div class="btn-box"><button class="push" data-btn="1" aria-label="Taster S2"><span></span></button><small data-btnlabel="1">S2 · PD3</small></div>
+        <div class="pot-box">
+          <div class="pot-knob" aria-hidden="true"><i></i></div>
+          <div class="pot-r">
+            <small data-potlabel>Poti · PC0</small>
+            <input type="range" class="pot-range" min="0" max="1023" value="512" aria-label="Potentiometer">
+            <b data-pot>2,50 V</b>
+          </div>
+        </div>
+      </div>
+      <div class="led-box"><small data-ledlabel>LEDs an PORTD</small><div class="led-row"></div></div>
+    </div>
+  </section>
+
+  <div class="split-v" id="splitV" role="separator" aria-orientation="vertical" title="Breite ändern"></div>
+
+  <!-- ============ Rechts: Editor ============ -->
+  <section class="ide" id="ide">
+    <div class="ed-head">
+      <span class="file-ic">C</span>
+      <input id="fileName" class="file-name" value="main.c" spellcheck="false" aria-label="Dateiname">
+      <span id="dirty" class="dirty" title="Ungespeicherte Änderungen"></span>
+      <span class="ed-info" id="edInfo">Zeile 1, Spalte 1</span>
+    </div>
+    <div class="editor" id="editorBox"><textarea id="code" spellcheck="false"></textarea></div>
+
+    <div class="split-h" id="splitH" role="separator" aria-orientation="horizontal" title="Höhe ändern"></div>
+
+    <div class="panel" id="panel">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="msg" role="tab">Meldungen <span class="badge" id="msgBadge"></span></button>
+        <button class="tab" data-tab="vars" role="tab">Variablen</button>
+        <button class="tab" data-tab="regs" role="tab">Register</button>
+        <button class="tab" data-tab="serial" role="tab">Seriell <span class="badge" id="serBadge"></span></button>
+        <button class="tab" data-tab="logic" role="tab">Logikanalysator</button>
+      </div>
+      <div class="tab-body active" data-body="msg"><div id="messages" class="messages"></div></div>
+      <div class="tab-body" data-body="vars"><div id="vars" class="vars"></div></div>
+      <div class="tab-body" data-body="regs"><div id="regs" class="regs"></div></div>
+      <div class="tab-body" data-body="serial">
+        <div class="ser-tools">
+          <span class="muted">UART TXD (PD1) → PC</span>
+          <label><input type="checkbox" id="serHex"> Hex</label>
+          <button class="mini" id="serClear">Leeren</button>
+        </div>
+        <pre id="serialOut" class="serial-out"></pre>
+        <form class="ser-in" id="serForm"><input id="serInput" placeholder="Text an den ATmega8 senden (RXD, PD0) …" autocomplete="off"><button class="mini">Senden</button></form>
+      </div>
+      <div class="tab-body" data-body="logic">
+        <div class="ser-tools">
+          <span class="muted">Spulen-Signale des Motors</span>
+          <label>Zeitfenster
+            <select id="laWin">
+              <option value="0.02">20 ms</option>
+              <option value="0.05">50 ms</option>
+              <option value="0.1" selected>100 ms</option>
+              <option value="0.5">500 ms</option>
+              <option value="2">2 s</option>
+            </select>
+          </label>
+        </div>
+        <canvas id="logic" class="logic"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar" id="statusbar">
+  <span id="sbClock">Takt: 1 MHz</span>
+  <span id="sbTime">Zeit: 0,000 s</span>
+  <span id="sbReal">Echtzeit: –</span>
+  <span id="sbRam">RAM: –</span>
+  <span class="grow"></span>
+  <span id="sbSaved" class="muted"></span>
+</footer>
+
+<!-- ============ Dialog: Schaltung ============ -->
+<dialog id="dlgSettings" class="dlg">
+  <form method="dialog" class="dlg-in" id="settingsForm">
+    <h2>⚙ Schaltung einstellen</h2>
+    <fieldset>
+      <legend>Schrittmotor</legend>
+      <label class="row">Motor
+        <select name="motor">
+          <option value="28byj">28BYJ-48 (5 V, 2048 Schritte/U)</option>
+          <option value="nema17">NEMA 17 (200 Schritte/U)</option>
+          <option value="pm48">Kleiner Motor (48 Schritte/U)</option>
+          <option value="custom">Eigene Werte …</option>
+        </select>
+      </label>
+      <div class="row2">
+        <label>Vollschritte pro Umdrehung <input name="steps" type="number" min="4" max="100000"></label>
+        <label>max. Schritte pro Sekunde <input name="maxRate" type="number" min="10" max="20000"></label>
+      </div>
+      <label class="row">Treiber
+        <select name="driver">
+          <option value="uln">ULN2003 – unipolar (IN1 … IN4)</option>
+          <option value="l293">L293D – bipolar (A1, A2, B1, B2)</option>
+        </select>
+      </label>
+      <div class="row4" id="mpinRow"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Taster, Poti, LEDs</legend>
+      <div class="row2">
+        <label>Taster S1 an <select name="s1" class="pinsel"></select></label>
+        <label>Taster S2 an <select name="s2" class="pinsel"></select></label>
+      </div>
+      <label class="chk"><input type="checkbox" name="extPullup"> Taster haben einen externen Pull-up-Widerstand (sonst: interne Pull-ups im Programm einschalten!)</label>
+      <div class="row2">
+        <label>Poti an
+          <select name="potCh">
+            <option value="0">PC0 / ADC0</option><option value="1">PC1 / ADC1</option><option value="2">PC2 / ADC2</option>
+            <option value="3">PC3 / ADC3</option><option value="4">PC4 / ADC4</option><option value="5">PC5 / ADC5</option>
+          </select>
+        </label>
+        <label>LED-Zeile an
+          <select name="ledPort"><option value="">keine</option><option value="B">PORTB</option><option value="C">PORTC</option><option value="D">PORTD</option></select>
+        </label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Takt des Chips</legend>
+      <label class="row">Taktfrequenz
+        <select name="clock">
+          <option value="auto">automatisch (= F_CPU aus dem Programm)</option>
+          <option value="1000000">1 MHz (intern, Werkseinstellung)</option>
+          <option value="2000000">2 MHz (intern)</option>
+          <option value="4000000">4 MHz (intern)</option>
+          <option value="8000000">8 MHz (intern)</option>
+          <option value="3686400">3,6864 MHz (Quarz)</option>
+          <option value="12000000">12 MHz (Quarz)</option>
+          <option value="16000000">16 MHz (Quarz)</option>
+        </select>
+      </label>
+      <p class="muted small">Wenn der echte Takt nicht zu F_CPU passt, stimmen die Wartezeiten von _delay_ms() nicht – genau wie in echt.</p>
+    </fieldset>
+    <div class="dlg-btns">
+      <button type="button" class="tb" id="btnDefaults">Standard</button>
+      <span class="grow"></span>
+      <button value="cancel" class="tb">Abbrechen</button>
+      <button value="ok" class="tb primary" id="btnSettingsOk">Übernehmen</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Dialog: Dateien ============ -->
+<dialog id="dlgFiles" class="dlg">
+  <div class="dlg-in">
+    <h2>📁 Meine Programme</h2>
+    <p class="muted small">Programme werden in diesem Browser gespeichert. Zum Weitergeben oder Sichern als .c-Datei herunterladen.</p>
+    <div class="file-actions">
+      <button class="tb" id="fNew">＋ Neu</button>
+      <button class="tb primary" id="fSave">💾 Im Browser speichern</button>
+      <button class="tb" id="fDownload">⬇ .c herunterladen</button>
+      <label class="tb" id="fUploadL">⬆ .c öffnen<input type="file" id="fUpload" accept=".c,.h,.txt,.ino,text/plain" hidden></label>
+    </div>
+    <ul id="fileList" class="file-list"></ul>
+    <div class="dlg-btns"><span class="grow"></span><button class="tb" id="fClose">Schließen</button></div>
+  </div>
+</dialog>
+
+<!-- ============ Dialog: Hilfe ============ -->
+<dialog id="dlgHelp" class="dlg wide">
+  <div class="dlg-in">
+    <h2>? Hilfe – AVR-Werkstatt</h2>
+    <div class="help" id="helpBody"></div>
+    <div class="dlg-btns"><span class="grow"></span><button class="tb primary" id="hClose">Los geht's</button></div>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/codemirror/codemirror.js"></script>
+<script src="vendor/codemirror/clike.js"></script>
+<script src="vendor/codemirror/matchbrackets.js"></script>
+<script src="vendor/codemirror/closebrackets.js"></script>
+<script src="vendor/codemirror/active-line.js"></script>
+<script src="vendor/codemirror/comment.js"></script>
+<script src="js/mcu.js"></script>
+<script src="js/compiler.js"></script>
+<script src="js/vm.js"></script>
+<script src="js/board.js"></script>
+<script src="js/examples.js"></script>
+<script src="js/help.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
