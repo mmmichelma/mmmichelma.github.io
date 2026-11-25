@@ -40,7 +40,7 @@ h1{font-size:25px;margin:0;letter-spacing:-.3px}
 .savebtn{position:absolute;top:10px;right:10px;border:0;border-radius:20px;padding:7px 12px;background:rgba(0,0,0,.55);color:#fff;font:inherit;font-size:13px;cursor:pointer}
 .entry .b{padding:12px}
 .entry .w{font-size:13px;font-weight:700}
-.entry .t{margin-top:4px;line-height:1.4}
+.entry .t{margin-top:4px;line-height:1.4;white-space:pre-wrap}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 .grid img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;cursor:pointer;display:block}
 #viewer{background:#000;align-items:stretch;z-index:70;flex-direction:column}
@@ -57,8 +57,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:12px 0 5px}
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:3px}
 .seg button{flex:1;border:0;background:transparent;padding:9px;border-radius:9px;font:inherit;font-size:15px;color:var(--mut);cursor:pointer}
 .seg button.on{background:var(--card);color:var(--ink);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.moods{display:flex;justify-content:space-between}
-.moods button{font-size:28px;background:transparent;border:2px solid transparent;border-radius:12px;padding:4px 7px;cursor:pointer;opacity:.45}
+.moods{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.moods button{font-size:27px;background:transparent;border:2px solid transparent;border-radius:12px;padding:4px 0;cursor:pointer;opacity:.45}
 .moods button.on{opacity:1;border-color:var(--acc);background:var(--acc2)}
 .count{text-align:right;font-size:12px;color:var(--mut);margin-top:3px}
 .photo{margin-top:6px}
@@ -175,15 +175,17 @@ nav.tab button.on{color:var(--acc);font-weight:700}
  <h2 id="edTitle">Eintrag</h2>
  <div class="seg" id="edWho"><button data-w="Marc">Marc</button><button data-w="Luna">Luna</button></div>
  <label>Datum</label><input type="date" id="edDate">
- <label>Wie war der Tag?</label>
+ <label>Wie war der Tag? <span style="opacity:.7">(mehrere möglich)</span></label>
  <div class="moods" id="edMood"></div>
- <label id="edQ">Dein Satz für heute</label>
- <textarea id="edText" maxlength="280" placeholder="Ein Satz reicht …"></textarea>
- <div class="count" id="edCount">0 / 280</div>
+ <label id="edQ">Dein Text für heute</label>
+ <textarea id="edText" maxlength="2000" placeholder="Ein Satz reicht – oder schreib so viel du willst …" style="min-height:130px"></textarea>
+ <div class="count" id="edCount">0 / 2000</div>
  <label>Foto</label>
  <div class="photo" id="edPhotoBox"></div>
- <button class="btn g" id="edPhotoBtn">📷 Foto auswählen</button>
+ <div class="row" id="edPick" style="display:flex;gap:8px"><button class="btn g" id="edCamBtn" style="flex:1">📷 Kamera</button><button class="btn g" id="edPhotoBtn" style="flex:1">🖼️ Galerie</button></div>
+ <button class="btn g hide" id="edPhotoDel">🗑️ Foto entfernen</button>
  <input type="file" id="edFile" accept="image/*" class="hide">
+ <input type="file" id="edCam" accept="image/*" capture="environment" class="hide">
  <button class="btn" id="edSave">Speichern</button>
  <button class="btn r" id="edDel">Löschen</button>
  <button class="btn g" data-close>Abbrechen</button>
@@ -203,7 +205,10 @@ nav.tab button.on{color:var(--acc);font-weight:700}
 <script>
 const $=i=>document.getElementById(i);
 const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const MOODS=['😢','😕','😐','🙂','😄','🥰'];
+const MOODS=['😢','😕','😐','🙂','😄','🥰','😂','🤩','🥳','😴','😤','😰','🤒','🙏'];
+// mehrere Gefühle pro Eintrag (alte Einträge haben nur 'mood')
+const moodsOf=e=>Array.isArray(e.moods)&&e.moods.length?e.moods:(e.mood!=null?[e.mood]:[]);
+const moodStr=e=>moodsOf(e).map(i=>MOODS[i]||'').join('');
 const PROMPTS=['Was war heute das Schönste?','Worüber hast du heute gelacht?','Wofür bist du heute dankbar?','Was hat dich heute überrascht?','Welcher Moment soll nicht vergessen werden?','Was hast du heute Neues gelernt?','Was hat dir heute Energie gegeben?','Was würdest du dem anderen heute gern sagen?','Welcher Song passt zu heute?','Was war heute anstrengend – und was hat geholfen?','Wo warst du heute am liebsten?','Was hat heute gut geschmeckt?','Worauf freust du dich morgen?','Was hat dich heute an uns denken lassen?'];
 const pad=n=>String(n).padStart(2,'0');
 const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
@@ -265,7 +270,7 @@ function streaks(){
  return {cur,best,today:days.has(todayISO())};
 }
 function entryHTML(e){
- return `<div class="entry" data-e="${e.id}">${e.photo?`<img src="${e.photo}" data-view="${e.id}" alt=""><button class="savebtn" data-save="${e.id}">⬇️ Foto speichern</button>`:''}<div class="b"><div class="w ${e.who[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${esc(e.who)}</div>${e.text?`<div class="t">${esc(e.text)}</div>`:''}</div></div>`;
+ return `<div class="entry" data-e="${e.id}">${e.photo?`<img src="${e.photo}" data-view="${e.id}" alt=""><button class="savebtn" data-save="${e.id}">⬇️ Foto speichern</button>`:''}<div class="b"><div class="w ${e.who[0]}">${moodStr(e)?moodStr(e)+' ':''}${esc(e.who)}</div>${e.text?`<div class="t">${esc(e.text)}</div>`:''}</div></div>`;
 }
 
 /* ---------- Render ---------- */
@@ -278,7 +283,7 @@ function render(){
   $('prompt').textContent=promptFor(t);
   const today=E.filter(e=>e.date===t);
   $('slots').innerHTML=['Marc','Luna'].map(w=>{const e=today.find(x=>x.who===w);
-   return e?`<button class="slot has" data-e="${e.id}"><div class="who ${w[0]}">${e.mood!=null?MOODS[e.mood]+' ':''}${w}</div>${e.text?`<div class="tx">${esc(e.text)}</div>`:''}${e.photo?`<img src="${e.photo}" data-view="${e.id}" alt="">`:''}</button>`
+   return e?`<button class="slot has" data-e="${e.id}"><div class="who ${w[0]}">${moodStr(e)?moodStr(e)+' ':''}${w}</div>${e.text?`<div class="tx">${esc(e.text)}</div>`:''}${e.photo?`<img src="${e.photo}" data-view="${e.id}" alt="">`:''}</button>`
    :`<button class="slot" data-new="${w}"><div class="who ${w[0]}">${w}</div><div class="add"><span>＋</span>Heute schreiben</div></button>`}).join('');
   // Weißt du noch?
   const m=byDate();let fd=null,lab='';
@@ -304,10 +309,10 @@ function render(){
  }
  if(view==='mehr'){
   const s=streaks(),days=new Set(E.map(e=>e.date)).size,ph=E.filter(e=>e.photo).length;
-  const mc=MOODS.map((_,i)=>E.filter(e=>e.mood===i).length),top=mc.indexOf(Math.max(...mc));
+  const mc=MOODS.map((_,i)=>E.filter(e=>moodsOf(e).includes(i)).length),top=mc.indexOf(Math.max(...mc));
   const mm=E.filter(e=>e.who==='Marc').length,ll=E.filter(e=>e.who==='Luna').length;
   $('stats').innerHTML=`<div class="stat"><b>${days}</b><span>Tage</span></div><div class="stat"><b>${ph}</b><span>Fotos</span></div><div class="stat"><b>${s.best}</b><span>Rekord-Serie</span></div>
-  <div class="stat"><b class="M">${mm}</b><span>von Marc</span></div><div class="stat"><b class="L">${ll}</b><span>von Luna</span></div><div class="stat"><b>${E.some(e=>e.mood!=null)?MOODS[top]:'–'}</b><span>häufigste Laune</span></div>`;
+  <div class="stat"><b class="M">${mm}</b><span>von Marc</span></div><div class="stat"><b class="L">${ll}</b><span>von Luna</span></div><div class="stat"><b>${E.some(e=>moodsOf(e).length)?MOODS[top]:'–'}</b><span>häufigste Laune</span></div>`;
  }
 }
 $('q').oninput=render;
@@ -377,8 +382,14 @@ async function drawCard(date){
  const bw=cols?(W-2*P-gap)/2:W-2*P,iw=bw-2*IN;
  const fs=cols?34:(es.length===1?44:38),lh=Math.round(fs*1.32),head=96;
  // Textzeilen vorab messen
- const L=es.map(e=>{x.font=`500 ${fs}px ${F}`;return e.text?wrap(x,e.text,iw-8,cols?9:7):[]});
- const tH=L.map(l=>head+l.length*lh+(l.length?18:0)+IN);
+ const budget=A*(cols?0.5:es.length===1?0.55:0.33);
+ const FS=[],LH=[];
+ const L=es.map((e,i)=>{let f=fs,lines=[];
+  if(!e.text){FS[i]=fs;LH[i]=lh;return []}
+  for(;f>=22;f-=2){x.font=`500 ${f}px ${F}`;lines=wrap(x,e.text,iw-8,999);if(lines.length*Math.round(f*1.32)<=budget)break}
+  f=Math.max(f,22);FS[i]=f;LH[i]=Math.round(f*1.32);x.font=`500 ${f}px ${F}`;
+  return wrap(x,e.text,iw-8,Math.max(1,Math.floor(budget/LH[i])));});
+ const tH=L.map((l,i)=>head+l.length*LH[i]+(l.length?18:0)+IN);
  // Fotohöhen verteilen
  let ph=imgs.map(()=>0);
  if(cols){const m=Math.max(...tH);ph=imgs.map(im=>Math.min(iw*im.height/im.width,A-m-IN));const h=Math.min(...ph);ph=[h,h]}
@@ -403,9 +414,12 @@ async function drawCard(date){
    const s2=Math.min(iw/im.width,h2/im.height);x.drawImage(im,bx+IN+(iw-im.width*s2)/2,ty+(h2-im.height*s2)/2,im.width*s2,im.height*s2);
    x.restore();ty+=h2}
   ty+=70;
-  x.font=`${cols?54:62}px ${F}`;x.fillStyle='#000';x.fillText(e.mood!=null?MOODS[e.mood]:'💬',bx+IN+4,ty);
-  x.fillStyle=col;x.font=`800 ${cols?38:44}px ${F}`;x.fillText(e.who,bx+IN+(cols?76:90),ty-8);
-  x.fillStyle='#251f2b';x.font=`500 ${fs}px ${F}`;L[i].forEach((l,k)=>x.fillText(l,bx+IN+4,ty+20+lh*(k+1)-8));
+  const ms=moodStr(e)||'💬';let ef=cols?54:62;x.font=`${ef}px ${F}`;
+  const nameW=(()=>{x.font=`800 ${cols?38:44}px ${F}`;return x.measureText(e.who).width})();
+  x.font=`${ef}px ${F}`;while(x.measureText(ms).width+nameW+30>iw&&ef>26){ef-=4;x.font=`${ef}px ${F}`}
+  x.fillStyle='#000';x.fillText(ms,bx+IN+4,ty);const ew=x.measureText(ms).width;
+  x.fillStyle=col;x.font=`800 ${cols?38:44}px ${F}`;x.fillText(e.who,bx+IN+4+ew+16,ty-8);
+  x.fillStyle='#251f2b';x.font=`500 ${FS[i]}px ${F}`;L[i].forEach((l,k)=>x.fillText(l,bx+IN+4,ty+20+LH[i]*(k+1)-8));
   if(!cols)y0+=h+gap;
  }
  return c.toDataURL('image/jpeg',.9);
@@ -447,20 +461,20 @@ function openDay(d){
 }
 
 /* ---------- Editor ---------- */
-let cur=null,photo=null,mood=null,who='Marc';
+let cur=null,photo=null,moods=[],who='Marc';
 $('edMood').innerHTML=MOODS.map((m,i)=>`<button data-m="${i}">${m}</button>`).join('');
-$('edMood').onclick=e=>{const b=e.target.closest('button');if(!b)return;mood=mood===+b.dataset.m?null:+b.dataset.m;drawEd()};
+$('edMood').onclick=e=>{const b=e.target.closest('button');if(!b)return;const m=+b.dataset.m;moods=moods.includes(m)?moods.filter(x=>x!==m):[...moods,m];drawEd()};
 $('edWho').onclick=e=>{const b=e.target.closest('button');if(!b)return;who=b.dataset.w;drawEd()};
-$('edText').oninput=()=>$('edCount').textContent=$('edText').value.length+' / 280';
+$('edText').oninput=()=>$('edCount').textContent=$('edText').value.length+' / 2000';
 $('edDate').onchange=()=>{$('edQ').textContent=promptFor($('edDate').value||todayISO())};
 function drawEd(){
  document.querySelectorAll('#edWho button').forEach(b=>b.classList.toggle('on',b.dataset.w===who));
- document.querySelectorAll('#edMood button').forEach(b=>b.classList.toggle('on',+b.dataset.m===mood));
+ document.querySelectorAll('#edMood button').forEach(b=>b.classList.toggle('on',moods.includes(+b.dataset.m)));
  $('edPhotoBox').innerHTML=photo?`<img src="${photo}" alt="">`:'';
- $('edPhotoBtn').textContent=photo?'🗑️ Foto entfernen':'📷 Foto auswählen';
+ $('edPick').style.display=photo?'none':'flex';$('edPhotoDel').classList.toggle('hide',!photo);$('edPhotoBtn').textContent='🖼️ Galerie';$('edCamBtn').textContent='📷 Kamera';
 }
 function openEd(e,w){
- cur=e||null;photo=e?e.photo||null:null;mood=e?e.mood:null;who=e?e.who:(w||'Marc');
+ cur=e||null;photo=e?e.photo||null:null;moods=e?[...moodsOf(e)]:[];who=e?e.who:(w||'Marc');
  $('edTitle').textContent=e?'Eintrag bearbeiten':'Neuer Eintrag';
  $('edDate').value=e?e.date:todayISO();$('edDate').max=todayISO();
  $('edText').value=e?e.text||'':'';$('edText').oninput();
@@ -468,9 +482,13 @@ function openEd(e,w){
  $('edDel').classList.toggle('hide',!e);
  drawEd();openS('ed');
 }
-$('edPhotoBtn').onclick=()=>{if(photo){photo=null;drawEd()}else $('edFile').click()};
-$('edFile').onchange=async()=>{
- const f=$('edFile').files[0];$('edFile').value='';if(!f)return;
+$('edPhotoBtn').onclick=()=>$('edFile').click();
+$('edCamBtn').onclick=()=>$('edCam').click();
+$('edPhotoDel').onclick=()=>{photo=null;drawEd()};
+$('edCam').onchange=()=>pickPhoto($('edCam'));
+$('edFile').onchange=()=>pickPhoto($('edFile'));
+async function pickPhoto(inp){
+ const f=inp.files[0];inp.value='';if(!f)return;
  $('edPhotoBtn').textContent='⏳ Lädt …';
  try{photo=await shrink(f)}catch(x){alertBox('Dieses Foto konnte nicht geladen werden.')}
  drawEd();
@@ -490,7 +508,7 @@ $('edSave').onclick=()=>{
  let e=cur||E.find(x=>x.date===date&&x.who===who);
  if(e&&cur&&(e.date!==date||e.who!==who)){const clash=E.find(x=>x!==e&&x.date===date&&x.who===who);if(clash){E=E.filter(x=>x!==clash);del(clash.id);addTomb(clash.id);Sync.dirty(clash.id)}}
  if(!e){e={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6)};E.push(e)}
- Object.assign(e,{date,who,text,photo,mood,ts:Date.now()});
+ Object.assign(e,{date,who,text,photo,moods:[...moods],mood:moods.length?moods[0]:null,ts:Date.now()});
  put(e);Sync.dirty(e.id);closeS();render();
 };
 let delArm=false;
@@ -515,7 +533,7 @@ function slide(){
  clearTimeout(stimer);if(si>=slides.length){endShow();return}
  const e=slides[si];
  $('sImg').style.background=e.photo?`center / cover no-repeat url("${e.photo}")`:'linear-gradient(135deg,#7a5c9e,#d0587e)';
- $('sD').textContent=nice(e.date,{day:'numeric',month:'long',year:'numeric'})+' · '+e.who+(e.mood!=null?' '+MOODS[e.mood]:'');
+ $('sD').textContent=nice(e.date,{day:'numeric',month:'long',year:'numeric'})+' · '+e.who+(moodStr(e)?' '+moodStr(e):'');
  $('sQ').textContent=e.text||'';
  const bars=$('sBars').children,n=bars.length,pos=Math.floor(si/slides.length*n);
  [...bars].forEach((b,i)=>b.classList.toggle('done',i<=pos));
@@ -585,8 +603,8 @@ const Sync=(()=>{
  const setQ=q=>{try{localStorage.setItem(QK,JSON.stringify(q))}catch(e){}};
  const H=()=>{const h={'apikey':C.k,'x-room':C.r,'Content-Type':'application/json'};if(/^eyJ/.test(C.k))h.Authorization='Bearer '+C.k;return h};
  const T=()=>C.u.replace(/\/+$/,'')+'/rest/v1/eintraege';
- function row(e){return {room:C.r,id:e.id,data:{date:e.date||'',who:e.who||'',text:e.text||'',mood:e.mood==null?null:e.mood},photo:e.photo||null,ts:e.ts||0,deleted:!!e.deleted}}
- function unrow(x){const d=x.data||{};return {e:{id:x.id,date:d.date||'',who:d.who||'',text:d.text||'',mood:d.mood==null?null:+d.mood,photo:x.photo||null,ts:+(x.ts||0),deleted:!!x.deleted},srv:x.updated_at||''}}
+ function row(e){return {room:C.r,id:e.id,data:{date:e.date||'',who:e.who||'',text:e.text||'',mood:e.mood==null?null:e.mood,moods:moodsOf(e)},photo:e.photo||null,ts:e.ts||0,deleted:!!e.deleted}}
+ function unrow(x){const d=x.data||{};return {e:{id:x.id,date:d.date||'',who:d.who||'',text:d.text||'',mood:d.mood==null?null:+d.mood,moods:Array.isArray(d.moods)?d.moods.map(Number):(d.mood==null?[]:[+d.mood]),photo:x.photo||null,ts:+(x.ts||0),deleted:!!x.deleted},srv:x.updated_at||''}}
  async function call(method,url,body,extra){
   const r=await fetch(url,{method,headers:Object.assign(H(),extra||{}),body:body===undefined?undefined:JSON.stringify(body)});
   const t=await r.text();let j=null;try{j=JSON.parse(t)}catch(x){}

@@ -29,6 +29,8 @@ import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private static final int PICK = 42;
+    private static final int CAM = 43;
+    private Uri camUri = null;
     private WebView web;
     private ValueCallback<Uri[]> pending;
     private String pendingImport = null;
@@ -57,6 +59,8 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
                 if (pending != null) pending.onReceiveValue(null);
                 pending = cb;
+                // "Kamera"-Knopf: direkt ein Foto aufnehmen
+                if (p.isCaptureEnabled() && openCamera()) return true;
                 try {
                     startActivityForResult(p.createIntent(), PICK);
                 } catch (Exception e) {
@@ -105,9 +109,33 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean openCamera() {
+        try {
+            File dir = new File(getCacheDir(), "camera");
+            dir.mkdirs();
+            File[] old = dir.listFiles();
+            if (old != null) for (File f : old) f.delete();
+            File f = new File(dir, "foto_" + System.currentTimeMillis() + ".jpg");
+            camUri = FileProvider.getUriForFile(this, "de.marc.tagebuch.files", f);
+            Intent i = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            i.putExtra(MediaStore.EXTRA_OUTPUT, camUri);
+            i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(i, CAM);
+            return true;
+        } catch (Exception e) {
+            camUri = null;
+            return false;
+        }
+    }
+
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == CAM && pending != null) {
+            pending.onReceiveValue(res == RESULT_OK && camUri != null ? new Uri[]{camUri} : null);
+            pending = null;
+            return;
+        }
         if (req == PICK && pending != null) {
             pending.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(res, data));
             pending = null;
