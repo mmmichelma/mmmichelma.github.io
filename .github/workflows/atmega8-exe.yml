@@ -1,0 +1,57 @@
+name: AVR-Werkstatt EXE
+
+on:
+  push:
+    paths:
+      - 'atmega8/**'
+      - '!atmega8/avr-werkstatt.apk'
+      - 'atmega8-desktop/**'
+      - '.github/workflows/atmega8-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atmega8-exe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Web-App kopieren
+        run: |
+          mkdir -p atmega8-desktop/app
+          cp -r atmega8/. atmega8-desktop/app/
+          rm -f atmega8-desktop/app/avr-werkstatt.apk atmega8-desktop/app/sw.js
+      - name: EXE bauen
+        working-directory: atmega8-desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm install --no-audit --no-fund
+          npm run dist
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avr-werkstatt-exe
+          path: atmega8-desktop/dist/AVR-Werkstatt.exe
+      # Öffentlicher Download ohne Anmeldung (GitHub-Release)
+      - name: Als Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=avr-werkstatt-windows
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "AVR-Werkstatt für Windows" \
+              --notes "ATmega8-Entwicklungsumgebung (Assembler und C) mit Schrittmotor-Simulation. AVR-Werkstatt.exe herunterladen und doppelklicken – keine Installation nötig."
+          fi
+          gh release upload "$TAG" atmega8-desktop/dist/AVR-Werkstatt.exe --clobber

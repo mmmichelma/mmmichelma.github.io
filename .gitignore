@@ -6,3 +6,6 @@ atmega8-android/.gradle/
 atmega8-android/build/
 atmega8-android/app/build/
 atmega8-android/local.properties
+atmega8-desktop/node_modules/
+atmega8-desktop/app/
+atmega8-desktop/dist/

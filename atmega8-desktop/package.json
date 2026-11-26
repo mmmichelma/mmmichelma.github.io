@@ -1,0 +1,25 @@
+{
+  "name": "avr-werkstatt",
+  "productName": "AVR-Werkstatt",
+  "version": "1.0.0",
+  "description": "ATmega8 programmieren (Assembler und C) mit Schrittmotor-Simulation",
+  "author": "mmmichelma",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "de.mmmichelma.avrwerkstatt",
+    "productName": "AVR-Werkstatt",
+    "files": ["main.js", "icon.png", "app/**/*"],
+    "directories": { "output": "dist" },
+    "win": { "target": "portable", "icon": "icon.png" },
+    "portable": { "artifactName": "AVR-Werkstatt.exe" }
+  }
+}
