@@ -31,19 +31,25 @@ jobs:
         run: |
           mkdir -p atmega8-desktop/app
           cp -r atmega8/. atmega8-desktop/app/
-          rm -f atmega8-desktop/app/avr-werkstatt.apk atmega8-desktop/app/sw.js
-      - name: EXE bauen
+          rm -rf atmega8-desktop/app/avr-werkstatt.apk atmega8-desktop/app/sw.js atmega8-desktop/app/AVR-Werkstatt.html atmega8-desktop/app/tools
+      - name: Einzel-HTML bauen
+        run: node atmega8/tools/einzeldatei.js
+      - name: EXE bauen (64 Bit, 32 Bit, ARM)
         working-directory: atmega8-desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           npm install --no-audit --no-fund
-          npm run dist
+          npx electron-builder --win portable --x64 -c.portable.artifactName=AVR-Werkstatt.exe
+          npx electron-builder --win portable --ia32 -c.portable.artifactName=AVR-Werkstatt-32bit.exe
+          npx electron-builder --win portable --arm64 -c.portable.artifactName=AVR-Werkstatt-ARM.exe
           ls -la dist
       - uses: actions/upload-artifact@v4
         with:
           name: avr-werkstatt-exe
-          path: atmega8-desktop/dist/AVR-Werkstatt.exe
+          path: |
+            atmega8-desktop/dist/AVR-Werkstatt*.exe
+            atmega8/AVR-Werkstatt.html
       # Öffentlicher Download ohne Anmeldung (GitHub-Release)
       - name: Als Release veröffentlichen
         env:
@@ -52,6 +58,14 @@ jobs:
           TAG=avr-werkstatt-windows
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --target "$GITHUB_SHA" --title "AVR-Werkstatt für Windows" \
-              --notes "ATmega8-Entwicklungsumgebung (Assembler und C) mit Schrittmotor-Simulation. AVR-Werkstatt.exe herunterladen und doppelklicken – keine Installation nötig."
+              --notes "ATmega8-Entwicklungsumgebung (Assembler und C) mit Schrittmotor-Simulation."
           fi
-          gh release upload "$TAG" atmega8-desktop/dist/AVR-Werkstatt.exe --clobber
+          printf '%s\n' \
+            'ATmega8-Entwicklungsumgebung (Assembler und C) mit Schrittmotor-Simulation. Keine Installation nötig.' '' \
+            '- **AVR-Werkstatt.exe** – normaler Windows-PC (64 Bit, Intel/AMD)' \
+            '- **AVR-Werkstatt-32bit.exe** – ältere 32-Bit-Windows' \
+            '- **AVR-Werkstatt-ARM.exe** – Windows mit ARM-Prozessor (z. B. Surface, Snapdragon)' \
+            '- **AVR-Werkstatt.html** – läuft auf JEDEM Gerät im Browser (Windows, Mac, Linux, Tablet), einfach doppelklicken' '' \
+            'Windows-Warnung „Der Computer wurde geschützt“: auf „Weitere Informationen“ → „Trotzdem ausführen“ klicken.' > notes.md
+          gh release edit "$TAG" --notes-file notes.md
+          gh release upload "$TAG" atmega8-desktop/dist/AVR-Werkstatt.exe atmega8-desktop/dist/AVR-Werkstatt-32bit.exe atmega8-desktop/dist/AVR-Werkstatt-ARM.exe atmega8/AVR-Werkstatt.html --clobber

@@ -7,7 +7,7 @@ plugins {
 def webOut = layout.buildDirectory.dir('generated/webassets')
 def copyWeb = tasks.register('copyWeb', Copy) {
     from(rootProject.file('../atmega8')) {
-        exclude 'sw.js', '*.apk'
+        exclude 'sw.js', '*.apk', 'AVR-Werkstatt.html', 'tools/**'
     }
     into webOut.map { it.dir('www') }
 }
