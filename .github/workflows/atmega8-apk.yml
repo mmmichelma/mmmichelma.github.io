@@ -36,9 +36,8 @@ jobs:
         with:
           name: avr-werkstatt-apk
           path: avr-werkstatt.apk
-      # Nur auf master: APK auf die Website legen (atmega8/avr-werkstatt.apk)
+      # APK ins Repository legen (atmega8/avr-werkstatt.apk) -> direkter Download-Link
       - name: APK auf die Website legen
-        if: github.ref == 'refs/heads/master'
         run: |
           cp avr-werkstatt.apk atmega8/avr-werkstatt.apk
           git config user.name "github-actions[bot]"
