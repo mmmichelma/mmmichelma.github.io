@@ -231,6 +231,7 @@
     $('#btnStop').disabled = !(s === 'run' || s === 'pause');
     $('#btnStep').disabled = s === 'run';
     $('#statusbar').className = 'statusbar' + (s === 'err' ? ' err' : s === 'pause' ? ' pause' : '');
+    if (window.AndroidApp && AndroidApp.keepScreenOn) AndroidApp.keepScreenOn(s === 'run');
     if (s === 'pause' || s === 'err' || s === 'done') { renderVars(true); renderRegs(); }
   }
 
@@ -549,6 +550,7 @@
   function confirmDiscard() { return !updateDirty() || ed.get().trim() === '' || confirm('Das aktuelle Programm ist nicht gespeichert. Trotzdem fortfahren?'); }
   function download() {
     const name = normName(fileName.value);
+    if (window.AndroidApp && AndroidApp.saveFile) { AndroidApp.saveFile(name, ed.get()); return; }
     const blob = new Blob([ed.get()], { type: 'text/x-csrc;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = name;
@@ -770,7 +772,15 @@
   if (!LS.get('seenHelp', false)) { LS.set('seenHelp', true); }
   $('#sbClock').textContent = 'Takt: ' + fmtHz(clockFor(null));
 
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  // Android-App: Zurück-Taste schließt zuerst offene Dialoge
+  window.avrBack = () => {
+    const d = $$('dialog').find(x => x.open);
+    if (d) { d.close(); return true; }
+    return false;
+  };
+  if (window.AndroidApp) document.documentElement.classList.add('in-app');
+
+  if (!window.AndroidApp && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* egal */ });
   }
   window.avrApp = { mcu, board, get vm() { return vm; }, get state() { return state; }, start, stop, step, pause, ed };

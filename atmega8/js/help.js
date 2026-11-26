@@ -64,6 +64,8 @@ PORTB = (PORTB &amp; 0xF0) | muster; // nur Bit 0..3 ändern</pre>
 <li><code>itoa</code>, <code>utoa</code>, <code>ltoa</code>, <code>ultoa</code>, <code>strlen</code>, <code>abs</code>, <code>rand</code>, <code>PROGMEM</code> / <code>pgm_read_byte()</code></li>
 </ul>
 <p class="muted small">Nicht simuliert: <code>struct</code>, Inline-Assembler, EEPROM, SPI/TWI, PWM-Signale an den Pins. Die Taktzahl pro Anweisung ist geschätzt – Wartezeiten mit _delay_ms() und Timer sind genau.</p>
+<h3 class="no-app">Android-App</h3>
+<p class="no-app">Die AVR-Werkstatt gibt es auch als App für Android-Handys und -Tablets (läuft ohne Internet): <a href="avr-werkstatt.apk" download>📱 avr-werkstatt.apk herunterladen</a>. Beim Installieren muss man „Installation aus unbekannten Quellen“ erlauben.</p>
 <h3>Auf den echten Chip</h3>
 <pre>avr-gcc -mmcu=atmega8 -Os -o main.elf main.c
 avr-objcopy -O ihex main.elf main.hex

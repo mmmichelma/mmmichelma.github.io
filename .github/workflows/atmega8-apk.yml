@@ -1,0 +1,49 @@
+name: AVR-Werkstatt APK
+
+on:
+  push:
+    paths:
+      - 'atmega8/**'
+      - '!atmega8/avr-werkstatt.apk'
+      - 'atmega8-android/**'
+      - '.github/workflows/atmega8-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atmega8-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: APK bauen
+        run: gradle -p atmega8-android assembleDebug --no-daemon
+      - name: APK umbenennen
+        run: cp atmega8-android/app/build/outputs/apk/debug/app-debug.apk avr-werkstatt.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avr-werkstatt-apk
+          path: avr-werkstatt.apk
+      # Nur auf master: APK auf die Website legen (atmega8/avr-werkstatt.apk)
+      - name: APK auf die Website legen
+        if: github.ref == 'refs/heads/master'
+        run: |
+          cp avr-werkstatt.apk atmega8/avr-werkstatt.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add atmega8/avr-werkstatt.apk
+          git diff --cached --quiet || git commit -m "AVR-Werkstatt: APK aktualisiert"
+          git pull --rebase
+          git push

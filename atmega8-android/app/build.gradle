@@ -1,0 +1,39 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Die Web-App aus ../../atmega8 wird beim Bauen als Asset in die APK kopiert,
+// damit sie komplett offline läuft (keine doppelten Quelltexte).
+def webOut = layout.buildDirectory.dir('generated/webassets')
+def copyWeb = tasks.register('copyWeb', Copy) {
+    from(rootProject.file('../atmega8')) {
+        exclude 'sw.js', '*.apk'
+    }
+    into webOut.map { it.dir('www') }
+}
+
+android {
+    namespace 'de.mmmichelma.avrwerkstatt'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'de.mmmichelma.avrwerkstatt'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs += [webOut.get().asFile]
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+tasks.named('preBuild') { dependsOn copyWeb }

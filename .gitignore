@@ -2,3 +2,7 @@ mikrofon-android/.gradle/
 mikrofon-android/build/
 mikrofon-android/app/build/
 mikrofon-android/local.properties
+atmega8-android/.gradle/
+atmega8-android/build/
+atmega8-android/app/build/
+atmega8-android/local.properties
