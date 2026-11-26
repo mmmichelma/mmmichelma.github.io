@@ -2,7 +2,10 @@
 (function (G) {
   'use strict';
   const EX = [];
-  const add = (id, title, code) => EX.push({ id, title, code: code.replace(/^\n/, '') });
+  // C-Beispiele: Motor über ULN2003 an PB0..PB3, Taster an PD2/PD3, Poti an PC0
+  const C_CFG = { driver: 'uln', s1: 'PD2', s2: 'PD3', potCh: 0 };
+  const C_TXT = 'Motor über ULN2003 an PB0…PB3, Taster an PD2/PD3, Poti an PC0';
+  const add = (id, title, code) => EX.push({ id, title, code: code.replace(/^\n/, ''), cfg: id === 'lauflicht' ? Object.assign({ ledPort: 'D' }, C_CFG) : C_CFG, cfgText: C_TXT });
 
   add('vorlage', 'Leere Vorlage', `
 /*
@@ -537,6 +540,252 @@ int main(void)
     return 0;
 }
 `);
+
+  // ===================== Assembler =====================
+  const addA = (id, title, code, cfg, cfgText) => EX.push({ id, title, lang: 'asm', code: code.replace(/^\n/, ''), cfg, cfgText });
+  const KLAUSUR = { driver: 'l293', s1: 'PC0', s2: 'PC1', potCh: -1, extPullup: false };
+  const KLAUSUR_TXT = 'Motor über L293D an PB0…PB3, Taster S1 an PC0, S2 an PC1';
+
+  addA('asm_vorlage', 'Leere Vorlage (Assembler)', `
+; Mein Programm
+; Motor an PORTB, Taster an PORTC
+
+.include "m8def.inc"
+
+        ldi r16, HIGH(RAMEND)   ; Stackpointer setzen
+        out SPH, r16            ; (nötig für rcall / ret)
+        ldi r16, LOW(RAMEND)
+        out SPL, r16
+
+        ldi r16, 0b00001111
+        out DDRB, r16           ; PB0..PB3 Ausgang
+
+mainloop:
+        ; hier kommt dein Programm hin
+
+        rjmp mainloop
+`, KLAUSUR, KLAUSUR_TXT);
+
+  addA('asm_halbschritt', 'Halbschritt mit Tastern (wie Klausur)', `
+; Schrittmotor im Halbschritt-Betrieb
+;
+; C0 -> T1 -> S1 -> Hauptschalter
+; C1 -> T2 -> S2 -> Rechtsbetrieb
+; PortB -> Motor (L293D: PB0=A1, PB1=A2, PB2=B1, PB3=B2)
+;
+; Der Motor läuft nur, solange S1 UND S2 gedrückt sind.
+; r19 ist ein "Lauf-Bit": Es wandert von Bit 0 bis Bit 7,
+; jedes Bit steht für einen der 8 Halbschritte.
+
+.include "m8def.inc"
+
+main:
+        ldi r18, HIGH(RAMEND)   ; Stackpointer setzen
+        out SPH, r18
+        ldi r18, LOW(RAMEND)
+        out SPL, r18
+
+        ldi r18, 0b00000000
+        out DDRC, r18           ; PortC auf Eingang
+        ldi r18, 0b11111111
+        out PORTC, r18          ; PortC Pull-ups ein
+        out DDRB, r18           ; PortB auf Ausgang
+
+        ldi r19, 0b00000001     ; Counter (Lauf-Bit)
+        ldi r20, 0b00000000     ; Phasenwerte
+
+mainloop:
+        sbic PINC, 0            ; Wenn T1 nicht gedrückt (Pin = 1)
+        rjmp mainloop           ; dann zurück zum Start
+
+        sbic PINC, 1            ; Wenn T2 nicht gedrückt
+        rjmp mainloop           ; dann zurück zum Start
+
+        lsl r19                 ; Lauf-Bit eins weiter
+        cpi r19, 0              ; rausgeschoben?
+        breq counter_begin      ; dann wieder bei Bit 0 anfangen
+
+stepper:
+        sbrc r19, 0
+        ldi r20, 0b00000001     ; Schritt 1
+        sbrc r19, 1
+        ldi r20, 0b00000101     ; Schritt 2
+        sbrc r19, 2
+        ldi r20, 0b00000100     ; Schritt 3
+        sbrc r19, 3
+        ldi r20, 0b00000110     ; Schritt 4
+        sbrc r19, 4
+        ldi r20, 0b00000010     ; Schritt 5
+        sbrc r19, 5
+        ldi r20, 0b00001010     ; Schritt 6
+        sbrc r19, 6
+        ldi r20, 0b00001000     ; Schritt 7
+        sbrc r19, 7
+        ldi r20, 0b00001001     ; Schritt 8
+
+        out PORTB, r20          ; Muster an den Motor
+
+        rcall Wait10ms          ; kleine Wartezeit (eingebaut)
+        rjmp mainloop
+
+counter_begin:
+        ldi r19, 0b00000001     ; Counter wieder auf 1
+        rjmp stepper
+`, KLAUSUR, KLAUSUR_TXT);
+
+  addA('asm_richtung', 'Links / rechts mit zwei Tastern', `
+; S1 (PC0) gedrückt -> Motor dreht links
+; S2 (PC1) gedrückt -> Motor dreht rechts
+; nichts gedrückt   -> Spulen aus
+;
+; Die 8 Halbschritte stehen in einer Tabelle im Flash
+; und werden mit lpm gelesen.
+
+.include "m8def.inc"
+.def temp  = r16
+.def pos   = r17            ; Position 0..7 in der Tabelle
+
+        ldi temp, HIGH(RAMEND)
+        out SPH, temp
+        ldi temp, LOW(RAMEND)
+        out SPL, temp
+
+        ser temp
+        out DDRB, temp          ; PortB Ausgang
+        clr temp
+        out DDRC, temp          ; PortC Eingang
+        ser temp
+        out PORTC, temp         ; Pull-ups ein
+        clr pos
+
+loop:
+        sbis PINC, 0            ; S1 gedrückt? (Pin = 0)
+        rjmp links
+        sbis PINC, 1            ; S2 gedrückt?
+        rjmp rechts
+        clr temp
+        out PORTB, temp         ; Spulen aus
+        rjmp loop
+
+links:
+        dec pos
+        rjmp schritt
+rechts:
+        inc pos
+schritt:
+        andi pos, 0x07          ; nur 0..7
+        ldi ZL, LOW(tabelle*2)  ; Z zeigt auf die Tabelle
+        ldi ZH, HIGH(tabelle*2)
+        add ZL, pos             ; + Position
+        clr temp
+        adc ZH, temp
+        lpm temp, Z             ; Muster holen
+        out PORTB, temp
+        rcall warte5ms
+        rjmp loop
+
+; Eigene Warteschleife: 5 ms bei 1 MHz
+; (4 Takte pro Durchlauf * 1250 = 5000 Takte)
+warte5ms:
+        push r24
+        push r25
+        ldi r24, LOW(1250)
+        ldi r25, HIGH(1250)
+w5:     sbiw r24, 1             ; 2 Takte
+        brne w5                 ; 2 Takte
+        pop r25
+        pop r24
+        ret
+
+tabelle:
+        .db 0b0001, 0b0101, 0b0100, 0b0110, 0b0010, 0b1010, 0b1000, 0b1001
+`, KLAUSUR, KLAUSUR_TXT);
+
+  addA('asm_timer', 'Timer-Interrupt (Assembler)', `
+; Der Timer1 löst alle 5 ms einen Interrupt aus,
+; die ISR macht jeweils einen Halbschritt.
+; Das Hauptprogramm hat nichts mehr zu tun.
+;
+; 1 MHz / 8 = 125000 Takte/s -> 5 ms = 625 -> OCR1A = 624
+
+.include "m8def.inc"
+.def temp = r16
+.def pos  = r17
+
+.org 0x000
+        rjmp reset              ; Reset-Vektor
+.org OC1Aaddr
+        rjmp isr_timer          ; Timer1 Compare A
+
+reset:
+        ldi temp, HIGH(RAMEND)
+        out SPH, temp
+        ldi temp, LOW(RAMEND)
+        out SPL, temp
+
+        ser temp
+        out DDRB, temp
+        clr pos
+
+        ldi temp, HIGH(624)
+        out OCR1AH, temp        ; erst High-Byte schreiben!
+        ldi temp, LOW(624)
+        out OCR1AL, temp
+        ldi temp, (1<<WGM12)|(1<<CS11)  ; CTC, Vorteiler 8
+        out TCCR1B, temp
+        ldi temp, 1<<OCIE1A     ; Compare-Interrupt erlauben
+        out TIMSK, temp
+        sei                     ; Interrupts global ein
+
+ende:   rjmp ende               ; nichts zu tun
+
+isr_timer:
+        push temp
+        in temp, SREG           ; Statusregister sichern
+        push temp
+
+        inc pos
+        andi pos, 0x07
+        ldi ZL, LOW(tabelle*2)
+        ldi ZH, HIGH(tabelle*2)
+        add ZL, pos
+        clr temp
+        adc ZH, temp
+        lpm temp, Z
+        out PORTB, temp
+
+        pop temp
+        out SREG, temp
+        pop temp
+        reti
+
+tabelle:
+        .db 0b0001, 0b0101, 0b0100, 0b0110, 0b0010, 0b1010, 0b1000, 0b1001
+`, KLAUSUR, KLAUSUR_TXT);
+
+  addA('asm_lauflicht', 'LED-Lauflicht an PORTD (Assembler)', `
+; Lauflicht mit den LEDs an PORTD
+; (LED-Zeile unter "Schaltung" auf PORTD stellen)
+
+.include "m8def.inc"
+
+        ldi r16, HIGH(RAMEND)
+        out SPH, r16
+        ldi r16, LOW(RAMEND)
+        out SPL, r16
+
+        ser r16
+        out DDRD, r16           ; PortD Ausgang
+        ldi r17, 0b00000001
+
+loop:
+        out PORTD, r17
+        rcall Wait100ms         ; eingebaute Warteschleife
+        lsl r17                 ; LED eins weiter
+        brne loop               ; noch nicht rausgeschoben?
+        ldi r17, 0b00000001     ; wieder von vorn
+        rjmp loop
+`, { ledPort: 'D' }, 'LED-Zeile an PORTD');
 
   G.AVR_EXAMPLES = EX;
 })(typeof window !== 'undefined' ? window : globalThis);

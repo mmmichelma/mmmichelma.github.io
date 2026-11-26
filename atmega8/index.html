@@ -111,6 +111,10 @@
       <span class="file-ic">C</span>
       <input id="fileName" class="file-name" value="main.c" spellcheck="false" aria-label="Dateiname">
       <span id="dirty" class="dirty" title="Ungespeicherte Änderungen"></span>
+      <select id="selLang" class="lang-sel" title="Programmiersprache" aria-label="Programmiersprache">
+        <option value="asm">Assembler</option>
+        <option value="c">C</option>
+      </select>
       <span class="ed-info" id="edInfo">Zeile 1, Spalte 1</span>
     </div>
     <div class="editor" id="editorBox"><textarea id="code" spellcheck="false"></textarea></div>
@@ -201,6 +205,7 @@
       <div class="row2">
         <label>Poti an
           <select name="potCh">
+            <option value="-1">nicht angeschlossen</option>
             <option value="0">PC0 / ADC0</option><option value="1">PC1 / ADC1</option><option value="2">PC2 / ADC2</option>
             <option value="3">PC3 / ADC3</option><option value="4">PC4 / ADC4</option><option value="5">PC5 / ADC5</option>
           </select>
@@ -271,6 +276,7 @@
 <script src="js/mcu.js"></script>
 <script src="js/compiler.js"></script>
 <script src="js/vm.js"></script>
+<script src="js/asm.js"></script>
 <script src="js/board.js"></script>
 <script src="js/examples.js"></script>
 <script src="js/help.js"></script>

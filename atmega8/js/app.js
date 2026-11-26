@@ -47,6 +47,34 @@
       atoms: words(['NULL', 'true', 'false'].concat(bitNames)),
       types: w => /^(u?int(8|16|32|64)_t|size_t|bool|_Bool|char|short|int|long|float|double|void|signed|unsigned)$/.test(w),
     }));
+    // Assembler-Hervorhebung
+    const asmWords = new Set(window.AvrAsm.MNEMONICS);
+    const ioNames = new Set(Object.keys(window.AvrAsm.IO).map(x => x.toLowerCase()).concat(bitNames.map(x => x.toLowerCase()), ['ramend', 'low', 'high', 'xl', 'xh', 'yl', 'yh', 'zl', 'zh']));
+    CodeMirror.defineMode('avrasm', () => ({
+      startState: () => ({ block: false }),
+      token(st, s) {
+        if (s.block) { if (st.match(/^.*?\*\//)) s.block = false; else st.skipToEnd(); return 'comment'; }
+        if (st.eatSpace()) return null;
+        if (st.match('/*')) { s.block = true; return 'comment'; }
+        if (st.match(';') || st.match('//')) { st.skipToEnd(); return 'comment'; }
+        if (st.sol() && st.match(/^[A-Za-z_]\w*:/)) return 'def';
+        if (st.match(/^[.#]\w+/)) return 'meta';
+        if (st.match(/^"(?:[^"\\]|\\.)*"?/)) return 'string';
+        if (st.match(/^'(?:[^'\\]|\\.)'?/)) return 'string';
+        if (st.match(/^(0[xX][0-9a-fA-F]+|\$[0-9a-fA-F]+|0[bB][01]+|\d+)/)) return 'number';
+        const w = st.match(/^[A-Za-z_]\w*/);
+        if (w) {
+          const l = w[0].toLowerCase();
+          if (/^r([12]?\d|3[01])$/.test(l)) return 'variable-3';
+          if (asmWords.has(l)) return 'keyword';
+          if (ioNames.has(l)) return 'builtin';
+          return 'variable';
+        }
+        st.next();
+        return 'operator';
+      },
+      lineComment: ';',
+    }));
     cm = CodeMirror.fromTextArea(ta, {
       mode: 'text/x-avr', theme: 'avr', lineNumbers: true, gutters: ['bp-gutter', 'CodeMirror-linenumbers'],
       matchBrackets: true, autoCloseBrackets: true, styleActiveLine: true, indentUnit: 4, tabSize: 4,
@@ -192,17 +220,46 @@
   }
   function fmtHz(h) { return h >= 1e6 ? fmtNum(h / 1e6, h % 1e6 ? 4 : 0).replace(/,?0+$/, '') + ' MHz' : fmtNum(h / 1e3, 0) + ' kHz'; }
 
+  // Sprache: aus der Dateiendung (.asm/.s/.inc = Assembler, sonst C)
+  const langOf = name => (/\.(asm|s|inc)$/i.test(name || '') ? 'asm' : 'c');
+  let lang = 'c';
+  // Sprache umschalten; rename=true ändert auch die Dateiendung
+  function setLang(l, rename) {
+    if (rename === undefined) rename = true;
+    lang = l;
+    $('#selLang').value = l;
+    $('.file-ic').textContent = l === 'asm' ? 'ASM' : 'C';
+    if (cm) cm.setOption('mode', l === 'asm' ? 'avrasm' : 'text/x-avr');
+    $('.tab[data-tab=vars]').textContent = l === 'asm' ? 'CPU-Register' : 'Variablen';
+    if (rename) {
+      const fn = $('#fileName');
+      const base = fn.value.replace(/\.\w+$/, '');
+      fn.value = base + (l === 'asm' ? '.asm' : '.c');
+      if (typeof saveCurrent === 'function') saveCurrent();
+    }
+  }
+  const looksAsm = code => /^\s*([A-Za-z_]\w*:\s*)?(ldi|out|in|rjmp|rcall|sbic|sbis|sbrc|sbrs|mov|lsl|cpi|breq|brne)\s+\S/im.test(code) && !/\bint\s+main\s*\(/.test(code);
+  function compileSource(code) {
+    return lang === 'asm' ? window.AvrAsm.assemble(code) : CCompiler.compile(code);
+  }
+
   function compileNow(silentOk) {
     const code = ed.get();
     msg.clear();
+    if (lang === 'c' && looksAsm(code)) { setLang('asm'); toast('Assembler erkannt – Sprache umgestellt'); }
     try {
-      const p = CCompiler.compile(code);
+      const p = compileSource(code);
       p.warnings.forEach(w => msg.add('warn', w.msg, w.line));
       markErrors(p.warnings.map(w => ({ type: 'warn', line: w.line })));
       if (!silentOk) {
-        msg.add('ok', 'Übersetzt: 0 Fehler, ' + p.warnings.length + ' Warnung' + (p.warnings.length === 1 ? '' : 'en') +
-          ' · RAM für Variablen: ' + p.ram + ' von 1024 Bytes' + (p.fcpu ? ' · F_CPU = ' + fmtHz(p.fcpu) : ''));
-        if (p.ram > 900) msg.add('warn', 'Fast der ganze Arbeitsspeicher (1 KB) ist belegt – der Stack braucht auch noch Platz!');
+        if (p.lang === 'asm') {
+          msg.add('ok', 'Assembliert: 0 Fehler, ' + p.warnings.length + ' Warnung' + (p.warnings.length === 1 ? '' : 'en') +
+            ' · Programm: ' + p.words + ' Wörter (' + (p.words * 2) + ' von 8192 Bytes Flash)' + (p.dseg ? ' · SRAM: ' + p.dseg + ' Bytes' : ''));
+        } else {
+          msg.add('ok', 'Übersetzt: 0 Fehler, ' + p.warnings.length + ' Warnung' + (p.warnings.length === 1 ? '' : 'en') +
+            ' · RAM für Variablen: ' + p.ram + ' von 1024 Bytes' + (p.fcpu ? ' · F_CPU = ' + fmtHz(p.fcpu) : ''));
+          if (p.ram > 900) msg.add('warn', 'Fast der ganze Arbeitsspeicher (1 KB) ist belegt – der Stack braucht auch noch Platz!');
+        }
       }
       return p;
     } catch (e) {
@@ -242,17 +299,24 @@
     clock = clockFor(p);
     board.clock = clock;
     board.resetSim();
-    vm = new AvrVM(p, mcu, {});
+    if (p.lang === 'asm') {
+      vm = new window.AvrAsm.AsmVM(p, mcu, {
+        clock,
+        onTip: t => msg.add('tip', t, lineOf()),
+        onWarn: t => msg.add('warn', t, lineOf()),
+      });
+    } else vm = new AvrVM(p, mcu, {});
     board.applyInputs();
     serBuf = ''; serDirty = true; serNew = 0;
     codeAtStart = ed.get();
     bps = collectBps();
     $('#sbClock').textContent = 'Takt: ' + fmtHz(clock);
-    $('#sbRam').textContent = 'RAM: ' + p.ram + ' / 1024 B';
+    $('#sbRam').textContent = p.lang === 'asm' ? 'Flash: ' + p.words * 2 + ' / 8192 B' : 'RAM: ' + p.ram + ' / 1024 B';
+    if (p.lang === 'asm' && p.builtins.size && !p.fcpu && cfg.clock === 'auto') msg.add('info', 'Takt 1 MHz (Werkseinstellung). Die eingebauten Warteschleifen (' + Array.from(p.builtins.keys()).join(', ') + ') warten genau ihre Zeit.');
     if (p.delayFcpu && Math.abs(p.delayFcpu - clock) > 1) {
       msg.add('warn', 'F_CPU im Programm (' + fmtHz(p.delayFcpu) + ') passt nicht zum Takt des Chips (' + fmtHz(clock) + ') – alle Wartezeiten sind ' + fmtNum(p.delayFcpu / clock, 2) + '× so lang wie gedacht.');
     }
-    if (!p.fcpu && cfg.clock === 'auto') msg.add('info', 'Kein F_CPU im Programm – der Chip läuft mit 1 MHz (Werkseinstellung).');
+    if (!p.fcpu && cfg.clock === 'auto' && p.lang !== 'asm') msg.add('info', 'Kein F_CPU im Programm – der Chip läuft mit 1 MHz (Werkseinstellung).');
     for (const [vi, f] of p.isrs) {
       if (f.enableHint) {
         const src = codeAtStart;
@@ -424,8 +488,40 @@
     const n = st.d.length;
     return '{' + st.d.slice(0, 48).map(fmt).join(', ') + (n > 48 ? ', … (' + n + ' Werte)' : '') + '}';
   }
+  function renderAsmVars() {
+    const R = vm.R, h2 = v => v.toString(16).toUpperCase().padStart(2, '0');
+    const cells = [];
+    for (let i = 0; i < 32; i++) {
+      const v = R[i];
+      const key = 'r' + i, txt = String(v);
+      const old = lastVals.get(key); lastVals.set(key, txt);
+      const chg = old !== undefined && old !== txt && state === 'pause';
+      const nm = prog.defs.get(i) || ({ 26: 'XL', 27: 'XH', 28: 'YL', 29: 'YH', 30: 'ZL', 31: 'ZH' })[i] || '';
+      cells.push('<tr class="' + (chg ? 'chg' : '') + '"><td><b>r' + i + '</b></td><td class="muted">' + esc(nm) + '</td><td class="v">0x' + h2(v) + '</td><td class="v">' + v + '</td><td class="v">0b' + v.toString(2).padStart(8, '0') + '</td></tr>');
+    }
+    const s = mcu.sreg;
+    const flags = 'ITHSVNZC'.split('').map((f, k) => '<span class="flag' + ((s >> (7 - k)) & 1 ? ' on' : '') + '" title="' + ['Interrupts erlaubt', 'T-Bit', 'Halbübertrag', 'Vorzeichen (N⊕V)', 'Überlauf (Zweierkomplement)', 'Negativ (Bit 7)', 'Zero (Ergebnis = 0)', 'Carry (Übertrag)'][k] + '">' + f + '</span>').join('');
+    const pc = vm.cur ? vm.cur.addr : vm.pc;
+    let lbl = '';
+    for (const [a, n] of prog.labels) if (a <= pc && (!lbl || a >= lbl[0])) lbl = [a, n];
+    const stack = [];
+    for (let a = vm.sp + 1; a <= 0x45F && stack.length < 12; a++) stack.push('0x' + h2(vm.ram[a - 0x60]));
+    const vars = prog.varLabels.map(v => esc(v.name) + ' = ' + vm.ram[v.addr - 0x60] + ' (0x' + h2(vm.ram[v.addr - 0x60]) + ')');
+    const isr = vm.isrCount.map((c, i) => (c ? ATmega8.VECTORS[i] + ': ' + c + '×' : '')).filter(Boolean);
+    varsBox.innerHTML = '<div class="cpu-top">' +
+      '<div><small>SREG</small><div class="flags">' + flags + '</div></div>' +
+      '<div><small>PC</small><b>0x' + pc.toString(16).toUpperCase().padStart(3, '0') + '</b>' + (lbl ? ' <span class="muted">' + esc(lbl[1]) + (pc > lbl[0] ? '+' + (pc - lbl[0]) : '') + '</span>' : '') + '</div>' +
+      '<div><small>SP</small><b>0x' + vm.sp.toString(16).toUpperCase() + '</b></div>' +
+      '<div><small>Stack (oben zuerst)</small><span class="v">' + (stack.length ? stack.join(' ') : '(leer)') + '</span></div>' +
+      (vars.length ? '<div><small>Variablen (.dseg)</small><span class="v">' + vars.join(' · ') + '</span></div>' : '') +
+      '</div>' +
+      '<table class="regtab"><thead><tr><th>Reg.</th><th>Name</th><th>Hex</th><th>Dez</th><th>Binär</th></tr></thead><tbody>' + cells.join('') + '</tbody></table>' +
+      (isr.length ? '<p class="muted small">Interrupts ausgeführt: ' + esc(isr.join(' · ')) + '</p>' : '');
+  }
+
   function renderVars(force) {
-    if (!vm || !prog) { varsBox.innerHTML = '<p class="muted">Starte das Programm, dann siehst du hier alle Variablen. Am besten mit ❚❚ Pause oder einem Haltepunkt.</p>'; return; }
+    if (!vm || !prog) { varsBox.innerHTML = '<p class="muted">Starte das Programm, dann siehst du hier alle ' + (lang === 'asm' ? 'Register r0 … r31 und die Flags' : 'Variablen') + '. Am besten mit ❚❚ Pause oder einem Haltepunkt.</p>'; return; }
+    if (prog.lang === 'asm') { renderAsmVars(); return; }
     const rows = [];
     const row = (key, name, type, text) => {
       const old = lastVals.get(key);
@@ -516,7 +612,7 @@
   // =====================================================================
   const files = () => LS.get('files', {});
   const fileName = $('#fileName');
-  function normName(n) { n = (n || 'main.c').trim().replace(/[\\/:*?"<>|]/g, '_'); if (!/\.\w+$/.test(n)) n += '.c'; return n; }
+  function normName(n) { n = (n || 'main').trim().replace(/[\\/:*?"<>|]/g, '_'); if (!/\.\w+$/.test(n)) n += (lang === 'asm' ? '.asm' : '.c'); return n; }
   let baseCode = '';
   function updateDirty() {
     const dirty = baseCode !== ed.get();
@@ -540,6 +636,7 @@
   }
   function loadCode(name, code) {
     if (state === 'run' || state === 'pause') stop();
+    setLang(langOf(name), false);
     ed.set(code);
     baseCode = code;
     fileName.value = name;
@@ -584,8 +681,9 @@
   $('#fNew').addEventListener('click', () => {
     if (!confirmDiscard()) return;
     let n = 1; const all = files();
-    while (all['programm' + n + '.c']) n++;
-    loadCode('programm' + n + '.c', AVR_EXAMPLES[0].code);
+    const ext = lang === 'asm' ? '.asm' : '.c';
+    while (all['programm' + n + ext]) n++;
+    loadCode('programm' + n + ext, AVR_EXAMPLES.find(x => x.id === (lang === 'asm' ? 'asm_vorlage' : 'vorlage')).code);
     $('#dlgFiles').close();
   });
   $('#fUpload').addEventListener('change', e => {
@@ -597,18 +695,35 @@
     r.readAsText(f);
     e.target.value = '';
   });
-  fileName.addEventListener('change', () => { fileName.value = normName(fileName.value); saveCurrent(); updateDirty(); });
+  fileName.addEventListener('change', () => {
+    fileName.value = normName(fileName.value);
+    setLang(langOf(fileName.value), false);
+    saveCurrent(); updateDirty(); lint();
+  });
+  $('#selLang').addEventListener('change', e => { setLang(e.target.value); lint(); });
 
-  // Beispiele
+  // Beispiele (nach Sprache gruppiert)
   const selEx = $('#selExample');
-  for (const ex of AVR_EXAMPLES) { const o = document.createElement('option'); o.value = ex.id; o.textContent = ex.title; selEx.appendChild(o); }
+  for (const [lg, title] of [['asm', 'Assembler'], ['c', 'C']]) {
+    const og = document.createElement('optgroup');
+    og.label = title;
+    for (const ex of AVR_EXAMPLES.filter(x => (x.lang || 'c') === lg)) { const o = document.createElement('option'); o.value = ex.id; o.textContent = ex.title; og.appendChild(o); }
+    selEx.appendChild(og);
+  }
   selEx.addEventListener('change', () => {
     const ex = AVR_EXAMPLES.find(x => x.id === selEx.value);
     selEx.value = '';
     if (!ex || !confirmDiscard()) return;
-    loadCode(ex.id + '.c', ex.code);
+    loadCode(ex.id + (ex.lang === 'asm' ? '.asm' : '.c'), ex.code);
     msg.clear();
     msg.add('info', 'Beispiel "' + ex.title + '" geladen – drücke ▶ Start.');
+    if (ex.cfg) {
+      const nc = Object.assign({}, cfg, ex.cfg);
+      if (JSON.stringify(nc) !== JSON.stringify(cfg)) {
+        cfg = nc; LS.set('cfg', cfg); board.setConfig(cfg); board.onPins(0);
+        msg.add('tip', 'Die Schaltung wurde für dieses Beispiel angepasst: ' + ex.cfgText + ' (änderbar unter ⚙ Schaltung).');
+      }
+    }
     if (ex.id === 'lauflicht' && cfg.ledPort !== 'D') msg.add('tip', 'Für dieses Beispiel unter ⚙ Schaltung die LED-Zeile auf PORTD stellen.');
   });
 
@@ -736,7 +851,7 @@
     lintTm = setTimeout(() => {
       if (state === 'run' || state === 'pause') return;
       try {
-        const p = CCompiler.compile(ed.get());
+        const p = compileSource(ed.get());
         markErrors(p.warnings.map(w => ({ type: 'warn', line: w.line })));
         if (msg.list.some(m => m.type === 'err')) { msg.clear(); p.warnings.forEach(w => msg.add('warn', w.msg, w.line)); msg.add('ok', 'Keine Fehler mehr 👍'); }
       } catch (e) {
@@ -762,12 +877,16 @@
   // Start
   // =====================================================================
   const cur = LS.get('current', null);
-  if (cur && cur.code) { ed.set(cur.code); fileName.value = cur.name || 'main.c'; baseCode = typeof cur.base === 'string' ? cur.base : cur.code; }
-  else { const ex = AVR_EXAMPLES.find(x => x.id === 'vollschritt'); ed.set(ex.code); baseCode = ex.code; fileName.value = 'vollschritt.c'; }
+  if (cur && cur.code) { fileName.value = cur.name || 'main.c'; setLang(langOf(fileName.value), false); ed.set(cur.code); baseCode = typeof cur.base === 'string' ? cur.base : cur.code; }
+  else {
+    const ex = AVR_EXAMPLES.find(x => x.id === 'asm_halbschritt');
+    fileName.value = 'asm_halbschritt.asm'; setLang('asm', false); ed.set(ex.code); baseCode = ex.code;
+    if (!LS.get('cfg', null)) { cfg = Object.assign({}, cfg, ex.cfg); LS.set('cfg', cfg); board.setConfig(cfg); }
+  }
   updateDirty();
   setState('idle');
   renderVars();
-  msg.add('info', 'Willkommen in der AVR-Werkstatt! Links ist dein ATmega8 mit Schrittmotor, rechts schreibst du das Programm in C.');
+  msg.add('info', 'Willkommen in der AVR-Werkstatt! Links ist dein ATmega8 mit Schrittmotor, rechts schreibst du das Programm – in Assembler oder C (umschalten oben neben dem Dateinamen).');
   msg.add('tip', 'Drücke ▶ Start (F5). Unter 📚 Beispiele gibt es fertige Programme, unter ? Hilfe alle Befehle und Tastenkürzel.');
   if (!LS.get('seenHelp', false)) { LS.set('seenHelp', true); }
   $('#sbClock').textContent = 'Takt: ' + fmtHz(clockFor(null));

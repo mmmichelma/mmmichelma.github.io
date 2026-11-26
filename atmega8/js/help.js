@@ -33,6 +33,24 @@ window.AVR_HELP = `
 <tr><td>8 LEDs</td><td>PORTD</td></tr>
 <tr><td>UART senden / empfangen</td><td>PD1 (TXD) / PD0 (RXD)</td></tr>
 </table>
+<h3>Assembler</h3>
+<p>Oben neben dem Dateinamen zwischen <b>Assembler</b> und <b>C</b> umschalten (Dateien mit <code>.asm</code> sind automatisch Assembler). Syntax wie im Atmel Studio / myAVR:</p>
+<pre>.include "m8def.inc"
+.def temp = r16
+.equ SCHRITTE = 8
+start:  ldi  temp, 0b00001111
+        out  DDRB, temp
+loop:   sbic PINC, 0      ; Taster an PC0
+        rjmp loop
+        rcall Wait10ms    ; eingebaute Wartezeit
+        rjmp loop</pre>
+<ul>
+<li>Alle Befehle des ATmega8 (<code>ldi mov add sub inc dec lsl lsr andi ori cpi breq brne sbic sbis sbrc sbrs in out sbi cbi rcall ret reti push pop ld st lds sts lpm adiw sbiw mul</code> …)</li>
+<li>Direktiven: <code>.include .def .equ .set .org .cseg .dseg .byte .db .dw .macro .if</code>, Funktionen <code>LOW() HIGH()</code></li>
+<li><b>Eingebaute Warteschleifen:</b> <code>rcall Wait10ms</code>, <code>Wait1ms</code>, <code>Wait100ms</code>, <code>Wait1s</code>, <code>Wait50us</code> … (jede Zahl geht) – wie die Routinen aus der Schule.</li>
+<li>Unter <b>CPU-Register</b> siehst du r0 … r31, die Flags (I T H S V N Z C), PC, SP und den Stack.</li>
+<li>Jeder Befehl braucht genau so viele Takte wie auf dem echten Chip.</li>
+</ul>
 <p class="muted small">Alles änderbar unter <b>⚙ Schaltung</b>. Die Taster schalten nach GND: interne Pull-ups mit <code>PORTD |= (1&lt;&lt;PD2);</code> einschalten, gedrückt liest man dann 0.</p>
 </div>
 <div>

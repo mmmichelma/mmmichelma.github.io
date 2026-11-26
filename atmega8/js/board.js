@@ -147,7 +147,8 @@
       };
       btn(this.s1, this.btn[0]);
       btn(this.s2, this.btn[1]);
-      if (this.cfg.potCh >= 0) {
+      const potBusy = [this.s1, this.s2].some(q => q && q.p === 1 && q.b === this.cfg.potCh);
+      if (this.cfg.potCh >= 0 && !potBusy) {
         const b = this.cfg.potCh;
         m.extMask[1] |= 1 << b;
         if (this.pot > 511) m.extVal[1] |= 1 << b;
@@ -206,7 +207,8 @@
 
     updateTags() {
       const tags = {};
-      this.cfg.mpins.forEach((n, k) => { tags[n] = (tags[n] ? tags[n] + ',' : '') + 'IN' + (k + 1); });
+      const mn = this.cfg.driver === 'l293' ? ['A1', 'A2', 'B1', 'B2'] : ['IN1', 'IN2', 'IN3', 'IN4'];
+      this.cfg.mpins.forEach((n, k) => { tags[n] = (tags[n] ? tags[n] + ',' : '') + mn[k]; });
       if (this.cfg.s1) tags[this.cfg.s1] = (tags[this.cfg.s1] ? tags[this.cfg.s1] + ',' : '') + 'S1';
       if (this.cfg.s2) tags[this.cfg.s2] = (tags[this.cfg.s2] ? tags[this.cfg.s2] + ',' : '') + 'S2';
       if (this.cfg.potCh >= 0) { const n = 'PC' + this.cfg.potCh; tags[n] = (tags[n] ? tags[n] + ',' : '') + 'Poti'; }
@@ -215,7 +217,7 @@
         const t = tags[pe.name] || '';
         pe.tag.textContent = t.length > 9 ? t.slice(0, 8) + '…' : t;
         pe.tagFull = t;
-        pe.tag.setAttribute('class', 'pin-tag' + (/IN\d/.test(t) ? ' t-motor' : /S\d/.test(t) ? ' t-btn' : /Poti/.test(t) ? ' t-pot' : t ? ' t-led' : ''));
+        pe.tag.setAttribute('class', 'pin-tag' + (/IN\d|[AB][12]/.test(t) ? ' t-motor' : /S\d/.test(t) ? ' t-btn' : /Poti/.test(t) ? ' t-pot' : t ? ' t-led' : ''));
       }
     }
 
@@ -398,7 +400,7 @@
       }
       this.btnLabels[0].textContent = 'S1 · ' + (this.cfg.s1 || '–');
       this.btnLabels[1].textContent = 'S2 · ' + (this.cfg.s2 || '–');
-      this.potLabel.textContent = 'Poti · PC' + this.cfg.potCh + ' (ADC' + this.cfg.potCh + ')';
+      this.potLabel.textContent = this.cfg.potCh >= 0 ? 'Poti · PC' + this.cfg.potCh + ' (ADC' + this.cfg.potCh + ')' : 'Poti · nicht angeschlossen';
     }
 
     renderLeds() {

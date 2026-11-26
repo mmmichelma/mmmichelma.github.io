@@ -301,6 +301,16 @@ legend { color: var(--muted); font-size: 12px; font-weight: 700; text-transform:
 .toast.show { opacity: 1; transform: translateX(-50%); }
 
 .in-app .no-app { display: none; }
+.lang-sel { height: 26px; font-size: 12.5px; padding: 0 6px; border-radius: 6px; }
+.cpu-top { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 4px 0 10px; align-items: flex-start; }
+.cpu-top small { display: block; color: var(--muted); font-size: 11px; font-weight: 700; }
+.cpu-top b { font-size: 15px; }
+.cpu-top .v { color: var(--accent); }
+.flags { display: flex; gap: 2px; }
+.flag { width: 20px; height: 22px; border-radius: 4px; border: 1px solid var(--line); background: var(--card2); display: grid; place-items: center; font-weight: 700; font-size: 12px; color: var(--muted); }
+.flag.on { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+.regtab { max-width: 520px; }
+.regtab td:first-child { width: 44px; }
 .help a { color: var(--accent); font-weight: 600; }
 
 /* ---------- Schmale Bildschirme ---------- */
