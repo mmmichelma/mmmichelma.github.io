@@ -121,6 +121,12 @@ nav.tab button.on{color:var(--acc);font-weight:700}
 <!-- MEHR -->
 <section id="v-mehr" class="hide">
  <div class="card"><h2>Unsere Statistik</h2><div class="stats" id="stats"></div></div>
+ <div class="card" id="remCard"><h2>Erinnerung 🔔</h2>
+  <p class="note">Jeden Abend zu einer zufälligen Zeit zwischen <b>18 und 22 Uhr</b> – aber nur, wenn du an dem Tag noch nichts geschrieben hast.</p>
+  <div class="seg" id="remSeg"><button data-on="1">An</button><button data-on="0">Aus</button></div>
+  <button class="btn g" id="remTest">🔔 Test-Benachrichtigung senden</button>
+  <p class="note" id="remMsg" style="text-align:center"></p>
+ </div>
  <div class="card"><h2>Tageskarten exportieren 📸</h2>
   <p class="note">Für jeden Tag entsteht ein Bild mit Datum, euren Fotos, Gefühlen und Sätzen. Die Bilder landen in der Galerie im Album „Unser Tagebuch Tageskarten“.</p>
   <div class="seg" id="exRange"><button data-r="7">7 Tage</button><button data-r="30" class="on">30 Tage</button><button data-r="365">1 Jahr</button><button data-r="0">Alles</button></div>
@@ -355,6 +361,24 @@ $('vDay').onclick=()=>{$('viewer').classList.remove('open');openDay(vEntry.date)
  box.addEventListener('touchend',e=>{if(e.touches.length<2)d0=0});
  box.addEventListener('dblclick',e=>{const r=box.getBoundingClientRect();setScale(vScale>1?1:2.5,e.clientX-r.left,e.clientY-r.top)});
 })();
+/* ---------- Tägliche Erinnerung (Android) ---------- */
+const hasRem=()=>!!(window.Android&&Android.setReminder);
+// Sagt der App, ob ICH heute schon geschrieben habe (dann keine Erinnerung)
+function markWritten(){
+ if(!hasRem())return;const t=todayISO();
+ const me=(typeof Sync!=='undefined'&&Sync.me)||null;
+ if(E.some(e=>e.date===t&&(!me||e.who===me)))try{Android.markWritten(t)}catch(x){}
+}
+function remUI(){
+ if(!hasRem()){$('remSeg').style.display='none';$('remTest').style.display='none';$('remMsg').textContent='Erinnerungen gibt es in der Android-App.';return}
+ let on=true;try{on=Android.isReminderOn()}catch(x){}
+ document.querySelectorAll('#remSeg button').forEach(b=>b.classList.toggle('on',(b.dataset.on==='1')===on));
+ let next='';try{next=Android.nextReminder()}catch(x){}
+ $('remMsg').textContent=on?(next?'Nächste Erinnerung: '+next:'Erinnerung ist an.'):'Erinnerung ist aus.';
+}
+$('remSeg').onclick=e=>{const b=e.target.closest('button');if(!b||!hasRem())return;try{Android.setReminder(b.dataset.on==='1')}catch(x){}remUI()};
+$('remTest').onclick=()=>{if(!hasRem())return;try{Android.testReminder()}catch(x){}$('remMsg').textContent='Test gesendet – schau in deine Benachrichtigungen. Kommt nichts? Benachrichtigungen für die App in den Android-Einstellungen erlauben.'};
+
 /* ---------- Tageskarten (Bild pro Tag) ---------- */
 const loadImg=src=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src});
 function wrap(ctx,text,maxW,maxLines){
@@ -509,7 +533,7 @@ $('edSave').onclick=()=>{
  if(e&&cur&&(e.date!==date||e.who!==who)){const clash=E.find(x=>x!==e&&x.date===date&&x.who===who);if(clash){E=E.filter(x=>x!==clash);del(clash.id);addTomb(clash.id);Sync.dirty(clash.id)}}
  if(!e){e={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6)};E.push(e)}
  Object.assign(e,{date,who,text,photo,moods:[...moods],mood:moods.length?moods[0]:null,ts:Date.now()});
- put(e);Sync.dirty(e.id);closeS();render();
+ put(e);Sync.dirty(e.id);markWritten();closeS();render();
 };
 let delArm=false;
 $('edDel').onclick=()=>{
@@ -719,14 +743,14 @@ const Sync=(()=>{
  $('invSend').textContent='💌 '+(C&&C.me==='Luna'?'Marc':'Luna')+' einladen';
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&C)run()});
  window.addEventListener('online',()=>{if(C)run()});
- return {start(){ui();if(C){run();startPoll()}},dirty,run,get on(){return !!C}};
+ return {start(){ui();if(C){run();startPoll()}},dirty,run,get on(){return !!C},get me(){return C?C.me:null}};
 })();
 
 /* ---------- Start ---------- */
 applyTheme();
 (async()=>{await openDB();E=await loadAll();
  if(!db)$('streakT').textContent='⚠️ Speicher nicht verfügbar – Einträge gehen beim Schließen verloren.';
- ready=true;render();checkImport();Sync.start();})();
+ ready=true;render();checkImport();Sync.start();markWritten();remUI();})();
 </script>
 </body>
 </html>

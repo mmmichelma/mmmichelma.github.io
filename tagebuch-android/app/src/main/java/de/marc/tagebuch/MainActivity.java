@@ -74,6 +74,11 @@ public class MainActivity extends Activity {
         web.loadUrl("file:///android_asset/index.html");
         setContentView(web);
         handleIntent(getIntent());
+        // Benachrichtigungen erlauben (Android 13+) und Erinnerung planen
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+        }
+        Reminder.schedule(this);
     }
 
     @Override
@@ -165,6 +170,26 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        @JavascriptInterface
+        public void markWritten(String date) { Reminder.markWritten(MainActivity.this, date); }
+
+        @JavascriptInterface
+        public void setReminder(boolean on) { Reminder.setOn(MainActivity.this, on); }
+
+        @JavascriptInterface
+        public boolean isReminderOn() { return Reminder.isOn(MainActivity.this); }
+
+        @JavascriptInterface
+        public String nextReminder() { return Reminder.nextText(MainActivity.this); }
+
+        @JavascriptInterface
+        public void testReminder() {
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+            }
+            Reminder.show(MainActivity.this);
+        }
+
         // Foto in die Galerie speichern (Bilder/Unser Tagebuch)
         @JavascriptInterface
         public String saveImage(String name, String dataUrl) {
